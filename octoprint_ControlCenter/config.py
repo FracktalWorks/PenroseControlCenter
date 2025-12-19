@@ -22,8 +22,10 @@ ip = '0.0.0.0'
 apiKey = 'B508534ED20348F090B4D0AD637D3660'   
 
 # Screen resolution settings
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 480
+# For 5-inch display: 800x480
+# For 7-inch display: 1024x600
+SCREEN_WIDTH = 1024
+SCREEN_HEIGHT = 600
 
 file_name = ''
 
