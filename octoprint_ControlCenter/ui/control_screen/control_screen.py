@@ -4,7 +4,7 @@ import os
 from PyQt5 import uic
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtGui import QPalette, QColor
-from PyQt5.QtWidgets import QWidget, QPushButton, QSpinBox, QTabWidget, QToolButton
+from PyQt5.QtWidgets import QWidget, QPushButton, QSpinBox, QTabWidget, QToolButton, QLabel, QVBoxLayout, QHBoxLayout, QFrame, QLabel
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
 from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer
@@ -63,8 +63,6 @@ class ControlScreen(QWidget):
         self.toggleAutoResumeButton = self.findChild(QPushButton, "toggleAutoResumeButton")
         self.toggleCheckPrintCompatibilityButton = self.findChild(QPushButton, "toggleCheckPrintCompatibilityButton")
         self.togglePrintRestoreButton = self.findChild(QPushButton, "togglePrintRestoreButton")
-        self.toggleFirmwareUpdateButton = self.findChild(QPushButton, "toggleFirmwareUpdateButton")
-        self.advaceDebuggingModeButton = self.findChild(QPushButton, "advaceDebuggingModeButton")
 
         # Temperature controls
         self.fanOnButton = self.findChild(QPushButton, "fanOnButton")
@@ -79,6 +77,28 @@ class ControlScreen(QWidget):
         self.tool250PreheatButton = self.findChild(QPushButton, "tool250PreheatButton")
         self.bed60PreheatButton = self.findChild(QPushButton, "bed60PreheatButton")
         self.bed100PreheatButton = self.findChild(QPushButton, "bed100PreheatButton")
+
+        # Ring heater temperature controls
+        self.ringTempSpinBox = self.findChild(QSpinBox, "ringTempSpinBox")
+        self.setRingTempButton = self.findChild(QPushButton, "setRingTempButton")
+        self.ring200PreheatButton = self.findChild(QPushButton, "ring200PreheatButton")
+        self.ring250PreheatButton = self.findChild(QPushButton, "ring250PreheatButton")
+        self.ringStatusLabel = self.findChild(QLabel, "ringStatusLabel")
+
+        # Unified temperature control widgets
+        self.temperatureStatusLabel = self.findChild(QLabel, "temperatureStatusLabel")
+        self.unifiedTempSpinBox = self.findChild(QSpinBox, "universalTempSpinBox")
+        self.unifiedTempSetButton = self.findChild(QPushButton, "setUniversalTempButton")
+        self.ringButton = self.findChild(QPushButton, "ringSelectButton")
+        self.chamberButton = self.findChild(QPushButton, "chamberSelectButton")
+        self.spoolButton = self.findChild(QPushButton, "spoolSelectButton")
+        
+        # Unified preset temperature buttons
+        self.unifiedPreset1Button = self.findChild(QPushButton, "preset1Button")
+        self.unifiedPreset2Button = self.findChild(QPushButton, "preset2Button")
+        
+        # Initialize selected heater
+        self.selectedHeater = "Ring"  # Default to Ring heater
 
         # Motion controls
         self.step1mmButton = self.findChild(QPushButton, "step1mmButton")
@@ -98,13 +118,14 @@ class ControlScreen(QWidget):
         self.retractButton = self.findChild(QPushButton, "retractButton")
 
 
-        # Validate UI components
-        required_components = [
+        # Validate UI components (only mandatory elements)
+        check_ui_elements(self, [
             self.controlTabWidget, self.controlBackButton, self.feedRateSpinBox,
             self.setFeedRateButton, self.moveZPBabyStep, self.moveZMBabyStep,
             self.fanOnButton, self.fanOffButton, self.cooldownButton,
             self.toolTempSpinBox, self.setToolTempButton, self.bedTempSpinBox,
-            self.setBedTempButton, self.step1mmButton, self.step10mmButton,
+            self.setBedTempButton,
+            self.step1mmButton, self.step10mmButton,
             self.step100mmButton, self.moveXPButton, self.moveXMButton,
             self.moveYPButton, self.moveYMButton, self.flowRateSpinBox,
             self.setFlowRateButton, 
@@ -112,20 +133,12 @@ class ControlScreen(QWidget):
             self.toggleFilamentRunoutButton, self.toggleFilamentJamButton,
             self.toggleAutoResumeButton, self.toggleCheckPrintCompatibilityButton,
             self.togglePrintRestoreButton
-        ]
+        ], "ControlScreen")
         
-        # Add firmware update check button if it exists (optional for backward compatibility)
-        if self.toggleFirmwareUpdateButton:
-            required_components.append(self.toggleFirmwareUpdateButton)
-            
-        # Add advanced debugging button if it exists (optional for backward compatibility) 
-        if self.advaceDebuggingModeButton:
-            required_components.append(self.advaceDebuggingModeButton)
-            
-        check_ui_elements(self, required_components, "ControlScreen")
-
-        # Apply scrollbar styling - find and style all scroll areas
-        self.apply_scrollbar_styling()
+        # Log optional widgets status
+        self.logger.debug(f"Optional widgets - ringTempSpinBox: {self.ringTempSpinBox is not None}, "
+                         f"unifiedTempSpinBox: {self.unifiedTempSpinBox is not None}, "
+                         f"temperatureStatusLabel: {self.temperatureStatusLabel is not None}")
 
         # set the active extruder to 0 initially
         self.setActiveExtruder(0)  # Default to extruder 0
@@ -146,11 +159,33 @@ class ControlScreen(QWidget):
         self.cooldownButton.clicked.connect(self.coolDownAction)
         self.setToolTempButton.clicked.connect(self.setToolTemp)
         self.setBedTempButton.clicked.connect(lambda: self.octoprint_client.setBedTemperature(self.bedTempSpinBox.value()))
-        self.bed60PreheatButton.clicked.connect(lambda: self.preheatBedTemp(60))
-        self.bed100PreheatButton.clicked.connect(lambda: self.preheatBedTemp(100))
-        self.tool180PreheatButton.clicked.connect(lambda: self.preheatToolTemp(180))
-        self.tool250PreheatButton.clicked.connect(lambda: self.preheatToolTemp(250))
-        self.toolToggleTemperatureButton.clicked.connect(self.selectToolTemperature)
+        self.bed60PreheatButton.pressed.connect(lambda: self.preheatBedTemp(60))
+        self.bed100PreheatButton.pressed.connect(lambda: self.preheatBedTemp(100))
+        self.tool180PreheatButton.pressed.connect(lambda: self.preheatToolTemp(180))
+        self.tool250PreheatButton.pressed.connect(lambda: self.preheatToolTemp(250))
+        self.toolToggleTemperatureButton.pressed.connect(self.selectToolTemperature)
+
+        # Ring heater signal connections (optional - may not exist in all UI versions)
+        if self.setRingTempButton:
+            self.setRingTempButton.clicked.connect(self.setRingTemp)
+        if self.ring200PreheatButton:
+            self.ring200PreheatButton.pressed.connect(lambda: self.preheatRingTemp(200))
+        if self.ring250PreheatButton:
+            self.ring250PreheatButton.pressed.connect(lambda: self.preheatRingTemp(250))
+
+        # Unified temperature control signal connections (optional - may not exist in all UI versions)
+        if self.unifiedTempSetButton:
+            self.unifiedTempSetButton.clicked.connect(self.setUnifiedTemp)
+        if self.ringButton:
+            self.ringButton.clicked.connect(lambda: self.selectHeater("Ring"))
+        if self.chamberButton:
+            self.chamberButton.clicked.connect(lambda: self.selectHeater("Chamber"))
+        if self.spoolButton:
+            self.spoolButton.clicked.connect(lambda: self.selectHeater("Spool"))
+        if self.unifiedPreset1Button:
+            self.unifiedPreset1Button.clicked.connect(self.setUnifiedPreset1)
+        if self.unifiedPreset2Button:
+            self.unifiedPreset2Button.clicked.connect(self.setUnifiedPreset2)
 
         # Motion Buttons Signal Connections
         self.step1mmButton.clicked.connect(lambda: self.setStep(1))
@@ -161,10 +196,10 @@ class ControlScreen(QWidget):
         self.moveYPButton.clicked.connect(lambda: self.octoprint_client.jog(y=self.step, speed=2000))
         self.moveYMButton.clicked.connect(lambda: self.octoprint_client.jog(y=-self.step, speed=2000))
         self.motorOffButton.clicked.connect(lambda: self.octoprint_client.gcode(command='M18'))
-        self.homeXYButton.clicked.connect(self.homeXYAndSync)
+        self.homeXYButton.clicked.connect(lambda: self.octoprint_client.home(['x', 'y']))
         self.moveZMButton.clicked.connect(lambda: self.octoprint_client.jog(z=-self.step, speed=2000))
         self.moveZPButton.clicked.connect(lambda: self.octoprint_client.jog(z=self.step, speed=2000))
-        self.homeZButton.clicked.connect(self.homeZAndSync)
+        self.homeZButton.clicked.connect(lambda: self.octoprint_client.home(['z']))
         self.toolToggleMotionButton.clicked.connect(self.selectToolMotion)
         self.extruderButton.clicked.connect(lambda: self.octoprint_client.extrude(self.step))
         self.retractButton.clicked.connect(lambda: self.octoprint_client.extrude(-self.step))
@@ -180,13 +215,9 @@ class ControlScreen(QWidget):
         self.toggleAutoResumeButton.clicked.connect(self.toggleAutoResume)
         self.toggleCheckPrintCompatibilityButton.clicked.connect(self.toggleCheckPrintCompatibility)
         self.togglePrintRestoreButton.clicked.connect(self.togglePrintRestore)
-        if self.toggleFirmwareUpdateButton:
-            self.toggleFirmwareUpdateButton.clicked.connect(self.toggleFirmwareUpdate)
-        if self.advaceDebuggingModeButton:
-            self.advaceDebuggingModeButton.clicked.connect(self.toggleAdvancedDebugging)
 
         # Configure spinboxes
-        for spinbox in [self.feedRateSpinBox, self.toolTempSpinBox, self.bedTempSpinBox, self.flowRateSpinBox]:
+        for spinbox in [self.feedRateSpinBox, self.toolTempSpinBox, self.bedTempSpinBox, self.flowRateSpinBox, self.ringTempSpinBox, self.unifiedTempSpinBox]:
             if spinbox:
                 spinbox.lineEdit().setReadOnly(True)
                 # spinbox.lineEdit().setDisabled(True)
@@ -215,33 +246,25 @@ class ControlScreen(QWidget):
             self.togglePrintRestoreButton.setChecked(print_restore_enabled)
             auto_resume_enabled = bool(self.main_window.printer_model.auto_resume_enabled)
             self.toggleAutoResumeButton.setChecked(auto_resume_enabled)
-            # Initialize firmware update check preference
-            firmware_update_check_enabled = bool(self.main_window.printer_model.firmware_update_check_enabled)
-            if self.toggleFirmwareUpdateButton:
-                self.toggleFirmwareUpdateButton.setChecked(firmware_update_check_enabled)
-            # Initialize advanced debugging mode preference
-            advanced_debugging_enabled = bool(self.main_window.printer_model.advanced_debugging_enabled)
-            if self.advaceDebuggingModeButton:
-                self.advaceDebuggingModeButton.setChecked(advanced_debugging_enabled)
             # Set auto resume button state based on print restore being enabled
             self.toggleAutoResumeButton.setEnabled(print_restore_enabled)
         except Exception as e:
             self.logger.warning(f"Failed initializing toggle buttons: {e}")
 
+        # Initialize unified temperature control
+        try:
+            # Set default heater selection to Ring
+            self.selectHeater("Ring")
+            # Initialize temperature status display
+            self.updateTemperatureStatusLabel()
+        except Exception as e:
+            self.logger.warning(f"Failed initializing unified temperature control: {e}")
+
 
         # Connect to printer model for status updates
         self.main_window.printer_model.status_updated.connect(self.buttonStatusUpdate)
         self.main_window.printer_model.active_extruder_changed.connect(self.setActiveExtruder)
-        # Connect to Klipper state changes to disable buttons when not ready
-        self.main_window.printer_model.klipper_state_changed.connect(self.on_klipper_state_changed)
         self.logger.debug("Connected ControlScreen to printer model status updates")
-        
-        # Initialize Klipper state UI
-        try:
-            current_klipper_state = getattr(self.main_window.printer_model, 'klipper_state', 'unknown')
-            self.on_klipper_state_changed(current_klipper_state)
-        except Exception as e:
-            self.logger.debug(f"Could not initialize Klipper state UI: {e}")
 
         # Initialize spinboxes with current values from printer model
         try:
@@ -254,37 +277,6 @@ class ControlScreen(QWidget):
 
         # Apply nozzle configuration
         self.apply_nozzle_configuration()
-
-    def showEvent(self, event):
-        """Update all spinbox values with latest printer model data when screen is shown."""
-        super().showEvent(event)
-        self.update_spinbox_values()
-
-    def update_spinbox_values(self):
-        """Update all spinbox values with the latest data from printer model."""
-        try:
-            # Update feed rate and flow rate
-            if hasattr(self.main_window.printer_model, 'current_feed_rate'):
-                self.feedRateSpinBox.setValue(self.main_window.printer_model.current_feed_rate)
-            if hasattr(self.main_window.printer_model, 'current_flow_rate'):
-                self.flowRateSpinBox.setValue(self.main_window.printer_model.current_flow_rate)
-            
-            # Update bed temperature (always use bed target)
-            bed_target = self.main_window.printer_model.temperatures.get('bedTarget', 0)
-            self.bedTempSpinBox.setValue(bed_target)
-            
-            # Update tool temperature based on active tool and nozzle configuration
-            if is_dual_nozzle_printer():
-                # For dual nozzle, sync temperature toggle with active extruder
-                active_extruder = getattr(self.main_window.printer_model, 'active_extruder', 0)
-                if hasattr(self, 'toolToggleTemperatureButton'):
-                    self.toolToggleTemperatureButton.setChecked(active_extruder == 1)
-            
-            # Update tool temperature spinbox using helper method
-            self._update_tool_temperature_spinbox()
-            
-        except Exception as e:
-            self.logger.error(f"Error updating spinbox values: {e}")
 
     def apply_nozzle_configuration(self):
         """Hide dual nozzle elements and apply styling for single nozzle configuration."""
@@ -332,8 +324,21 @@ class ControlScreen(QWidget):
             self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
             # octopiclient.setToolTemperature({"tool0": 0})
             self.octoprint_client.setBedTemperature(0)
+            # Turn off ring heater - you'll need to provide the correct M-code here
+            self.octoprint_client.gcode(command='M104 P2 S0')  # Ring heater
+            self.octoprint_client.gcode(command='M104 P3 S0')  # Chamber heater
+            self.octoprint_client.gcode(command='M104 P4 S0')  # Spool heater
+            
+            # Update UI spinboxes
             self.toolTempSpinBox.setProperty("value", 0)
             self.bedTempSpinBox.setProperty("value", 0)
+            if self.ringTempSpinBox:
+                self.ringTempSpinBox.setProperty("value", 0)
+            if self.unifiedTempSpinBox:
+                self.unifiedTempSpinBox.setProperty("value", 0)
+                
+            # Update temperature status
+            self.updateTemperatureStatusLabel()
         except Exception as e:
             logger.error("Error in ControlScreen.coolDownAction: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.coolDownAction: {}".format(e), overlay=True)
@@ -407,6 +412,183 @@ class ControlScreen(QWidget):
             logger.error("Error in ControlScreen.preheatToolTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.preheatToolTemp: {}".format(e), overlay=True)
 
+    def setRingTemp(self):
+        """
+        Sets the temperature of the ring heater
+        """
+        logger.info("ControlScreen.setRingTemp started")
+        try:
+            # You'll need to provide the correct G/M-code for ring heater here
+            # This is a placeholder - update with the correct command for your ring heater
+            self.octoprint_client.gcode(command='M104 P2 S' + str(self.ringTempSpinBox.value()))
+        except Exception as e:
+            logger.error("Error in ControlScreen.setRingTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setRingTemp: {}".format(e), overlay=True)
+
+    def preheatRingTemp(self, temp):
+        """
+        Preheats the ring heater to the given temperature
+        param temp: temperature to preheat to
+        """
+        logger.info("ControlScreen.preheatRingTemp started")
+        try:
+            # You'll need to provide the correct G/M-code for ring heater here
+            # This is a placeholder - update with the correct command for your ring heater
+            self.octoprint_client.gcode(command='M104 P2 S' + str(temp))
+            if self.ringTempSpinBox:
+                self.ringTempSpinBox.setProperty("value", temp)
+        except Exception as e:
+            logger.error("Error in ControlScreen.preheatRingTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatRingTemp: {}".format(e), overlay=True)
+
+    def selectHeater(self, heater_name):
+        """
+        Select which heater to control with the unified temperature control.
+        Updates button states and preset button texts.
+        """
+        logger.info(f"ControlScreen.selectHeater: {heater_name}")
+        try:
+            # Check if unified temperature control widgets exist
+            if not all([self.ringButton, self.chamberButton, self.spoolButton, 
+                       self.unifiedPreset1Button, self.unifiedPreset2Button, self.unifiedTempSpinBox]):
+                self.logger.debug("Unified temperature control widgets not available")
+                return
+                
+            self.selectedHeater = heater_name
+            
+            # Update button checked states
+            self.ringButton.setChecked(heater_name == "Ring")
+            self.chamberButton.setChecked(heater_name == "Chamber")
+            self.spoolButton.setChecked(heater_name == "Spool")
+            
+            # Update preset button texts and values based on selected heater
+            if heater_name == "Ring":
+                self.unifiedPreset1Button.setText("180°C")
+                self.unifiedPreset2Button.setText("250°C")
+                # Set spinbox to current ring temperature if available
+                if hasattr(self.main_window.printer_model, 'temperatures'):
+                    ring_temp = self.main_window.printer_model.temperatures.get("ring", 0)
+                    self.unifiedTempSpinBox.setValue(int(ring_temp))
+            elif heater_name == "Chamber":
+                self.unifiedPreset1Button.setText("50°C")
+                self.unifiedPreset2Button.setText("80°C")
+                # Set spinbox to current chamber temperature if available
+                if hasattr(self.main_window.printer_model, 'temperatures'):
+                    chamber_temp = self.main_window.printer_model.temperatures.get("chamber", 0)
+                    self.unifiedTempSpinBox.setValue(int(chamber_temp))
+            elif heater_name == "Spool":
+                self.unifiedPreset1Button.setText("50°C")
+                self.unifiedPreset2Button.setText("80°C")
+                # Set spinbox to current spool temperature if available
+                if hasattr(self.main_window.printer_model, 'temperatures'):
+                    spool_temp = self.main_window.printer_model.temperatures.get("spool", 0)
+                    self.unifiedTempSpinBox.setValue(int(spool_temp))
+            
+            # Update the temperature status display
+            self.updateTemperatureStatusLabel()
+            
+        except Exception as e:
+            logger.error(f"Error in ControlScreen.selectHeater: {e}")
+
+    def setUnifiedTemp(self):
+        """
+        Set the temperature for the currently selected heater.
+        """
+        logger.info(f"ControlScreen.setUnifiedTemp for {self.selectedHeater}")
+        try:
+            if not self.unifiedTempSpinBox:
+                return
+                
+            temp = self.unifiedTempSpinBox.value()
+            
+            if self.selectedHeater == "Ring":
+                # Ring heater G-code (update with correct command)
+                self.octoprint_client.gcode(command=f'M104 P2 S{temp}')
+            elif self.selectedHeater == "Chamber":
+                # Chamber heater G-code (update with correct command)
+                self.octoprint_client.gcode(command=f'M104 P3 S{temp}')
+            elif self.selectedHeater == "Spool":
+                # Spool heater G-code (update with correct command)
+                self.octoprint_client.gcode(command=f'M104 P4 S{temp}')
+                
+        except Exception as e:
+            logger.error(f"Error in ControlScreen.setUnifiedTemp: {e}")
+            dialog.WarningOk(self, f"Error in ControlScreen.setUnifiedTemp: {e}", overlay=True)
+
+    def setUnifiedPreset1(self):
+        """
+        Set the first preset temperature for the currently selected heater.
+        """
+        logger.info(f"ControlScreen.setUnifiedPreset1 for {self.selectedHeater}")
+        try:
+            if not self.unifiedTempSpinBox:
+                return
+                
+            if self.selectedHeater == "Ring":
+                temp = 180
+            elif self.selectedHeater == "Chamber":
+                temp = 50
+            elif self.selectedHeater == "Spool":
+                temp = 50
+            else:
+                return
+            
+            self.unifiedTempSpinBox.setValue(temp)
+            self.setUnifiedTemp()
+            
+        except Exception as e:
+            logger.error(f"Error in ControlScreen.setUnifiedPreset1: {e}")
+            dialog.WarningOk(self, f"Error in ControlScreen.setUnifiedPreset1: {e}", overlay=True)
+
+    def setUnifiedPreset2(self):
+        """
+        Set the second preset temperature for the currently selected heater.
+        """
+        logger.info(f"ControlScreen.setUnifiedPreset2 for {self.selectedHeater}")
+        try:
+            if not self.unifiedTempSpinBox:
+                return
+                
+            if self.selectedHeater == "Ring":
+                temp = 250
+            elif self.selectedHeater == "Chamber":
+                temp = 80
+            elif self.selectedHeater == "Spool":
+                temp = 80
+            else:
+                return
+                
+            self.unifiedTempSpinBox.setValue(temp)
+            self.setUnifiedTemp()
+            
+        except Exception as e:
+            logger.error(f"Error in ControlScreen.setUnifiedPreset2: {e}")
+            dialog.WarningOk(self, f"Error in ControlScreen.setUnifiedPreset2: {e}", overlay=True)
+
+    def updateTemperatureStatusLabel(self):
+        """
+        Update the unified temperature status label with current temperatures.
+        """
+        try:
+            # Check if the label exists
+            if not self.temperatureStatusLabel:
+                return
+                
+            if hasattr(self.main_window.printer_model, 'temperatures'):
+                temps = self.main_window.printer_model.temperatures
+                ring_temp = temps.get("ring", 0)
+                chamber_temp = temps.get("chamber", 0)
+                spool_temp = temps.get("spool", 0)
+                
+                status_text = f"Ring: {ring_temp}°C | Chamber: {chamber_temp}°C | Spool: {spool_temp}°C"
+                self.temperatureStatusLabel.setText(status_text)
+            else:
+                self.temperatureStatusLabel.setText("Ring: --°C | Chamber: --°C | Spool: --°C")
+        except Exception as e:
+            logger.error(f"Error in ControlScreen.updateTemperatureStatusLabel: {e}")
+            if self.temperatureStatusLabel:
+                self.temperatureStatusLabel.setText("Ring: --°C | Chamber: --°C | Spool: --°C")
+
     def selectToolTemperature(self):
         """
         Selects the tool whose temperature needs to be changed.
@@ -414,8 +596,24 @@ class ControlScreen(QWidget):
         """
         logger.info("ControlScreen.selectToolTemperature started")
         try:
-            # Update the spinbox with the target temperature of the newly selected tool
-            self._update_tool_temperature_spinbox()
+            # self.toolToggleTemperatureButton.setText(
+            #     "1") if self.toolToggleTemperatureButton.isChecked() else self.toolToggleTemperatureButton.setText("0")
+            if self.toolToggleTemperatureButton.isChecked():
+                print("extruder 1 Temperature")
+                temp_text = self.main_window.home_screen.tool1TargetTemperature.text().replace("°C", "").strip()
+                # Handle empty string or non-numeric values
+                if temp_text and temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    self.toolTempSpinBox.setProperty("value", float(temp_text))
+                else:
+                    self.toolTempSpinBox.setProperty("value", 0)
+            else:
+                print("extruder 0 Temperature")
+                temp_text = self.main_window.home_screen.tool0TargetTemperature.text().replace("°C", "").strip()
+                # Handle empty string or non-numeric values
+                if temp_text and temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    self.toolTempSpinBox.setProperty("value", float(temp_text))
+                else:
+                    self.toolTempSpinBox.setProperty("value", 0)
         except Exception as e:
             logger.error("Error in ControlScreen.selectToolTemperature: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.selectToolTemperature: {}".format(e), overlay=True)
@@ -474,41 +672,13 @@ class ControlScreen(QWidget):
                 self.toolToggleMotionButton.setChecked(False)
                 self.toolToggleMotionButton.setText("0")
                 self.activeExtruder = 0
-                # For dual nozzle, also update temperature toggle
-                if is_dual_nozzle_printer() and hasattr(self, 'toolToggleTemperatureButton'):
-                    self.toolToggleTemperatureButton.setChecked(False)
             elif activeNozzle == 1:
                 self.toolToggleMotionButton.setChecked(True)
                 self.toolToggleMotionButton.setText("1")
                 self.activeExtruder = 1
-                # For dual nozzle, also update temperature toggle
-                if is_dual_nozzle_printer() and hasattr(self, 'toolToggleTemperatureButton'):
-                    self.toolToggleTemperatureButton.setChecked(True)
-            
-            # Update temperature spinbox to show the correct tool's target temperature
-            self._update_tool_temperature_spinbox()
-            
         except Exception as e:
             logger.error("Error in control_screen.setActiveExtruder: {}".format(e))
             dialog.WarningOk(self, "Error in control_screen.setActiveExtruder: {}".format(e), overlay=True)
-
-    def _update_tool_temperature_spinbox(self):
-        """Helper method to update tool temperature spinbox based on current tool selection."""
-        try:
-            if is_dual_nozzle_printer() and hasattr(self, 'toolToggleTemperatureButton'):
-                if self.toolToggleTemperatureButton.isChecked():
-                    # Tool 1 is selected
-                    tool_target = self.main_window.printer_model.temperatures.get('tool1Target', 0)
-                else:
-                    # Tool 0 is selected
-                    tool_target = self.main_window.printer_model.temperatures.get('tool0Target', 0)
-            else:
-                # Single nozzle, always use tool0
-                tool_target = self.main_window.printer_model.temperatures.get('tool0Target', 0)
-            
-            self.toolTempSpinBox.setValue(tool_target)
-        except Exception as e:
-            self.logger.error(f"Error updating tool temperature spinbox: {e}")
 
     def buttonStatusUpdate(self, status):
         """Update ControlScreen UI elements based on printer status"""
@@ -519,72 +689,14 @@ class ControlScreen(QWidget):
             else:  # Paused, Offline, Operational, etc.
                 self.motionTab.setDisabled(False)
                     
+            # Update unified temperature status display
+            self.updateTemperatureStatusLabel()
+            
             # TODO: Add other control-specific UI updates based on status
             # For example: disable certain temperature controls, etc.
         except Exception as e:
             logger.error(f"Error updating ControlScreen UI for status {status}: {e}")
             dialog.WarningOk(self, f"Error updating ControlScreen UI for status {status}: {e}", overlay=True)
-
-    def on_klipper_state_changed(self, state):
-        """Disable all buttons except back button when Klipper is not ready"""
-        try:
-            state_lower = str(state).strip().lower()
-            # Accept multiple states as "ready": ready, operational, idle
-            # Also allow unknown state to keep buttons enabled (temporary for debugging)
-            is_ready = state_lower in ['ready', 'operational', 'idle', 'unknown']
-            self.logger.info(f"ControlScreen: Klipper state changed to: '{state}' (normalized: '{state_lower}'), is_ready: {is_ready}")
-            
-            # List all buttons and controls that should be disabled when Klipper is not ready
-            # Keep the back button always enabled
-            controls_to_disable = [
-                # Feed Rate controls
-                self.setFeedRateButton, self.moveZPBabyStep, self.moveZMBabyStep,
-                
-                # Flow rate controls
-                self.setFlowRateButton,
-                
-                # Temperature controls
-                self.fanOnButton, self.fanOffButton, self.cooldownButton,
-                self.setToolTempButton, self.setBedTempButton, self.toolToggleTemperatureButton,
-                self.tool180PreheatButton, self.tool250PreheatButton,
-                self.bed60PreheatButton, self.bed100PreheatButton,
-                
-                # Motion controls
-                self.step1mmButton, self.step10mmButton, self.step100mmButton,
-                self.moveXPButton, self.moveXMButton, self.moveYPButton, self.moveYMButton,
-                self.motorOffButton, self.homeXYButton, self.moveZMButton, self.moveZPButton,
-                self.homeZButton, self.toolToggleMotionButton, self.extruderButton, self.retractButton,
-                
-                # Preference controls
-                self.toggleFilamentRunoutButton, self.toggleFilamentJamButton,
-                self.toggleAutoResumeButton, self.toggleCheckPrintCompatibilityButton,
-                self.togglePrintRestoreButton, self.toggleFirmwareUpdateButton,
-                
-                # Spinboxes
-                self.feedRateSpinBox, self.flowRateSpinBox, self.toolTempSpinBox, self.bedTempSpinBox
-            ]
-            
-            # Enable/disable controls based on Klipper state
-            for control in controls_to_disable:
-                if control:  # Check if control exists (some may be None)
-                    control.setEnabled(is_ready)
-            
-            # Also disable entire tabs when not ready for better visual feedback
-            if hasattr(self, 'tuneTab') and self.tuneTab:
-                self.tuneTab.setEnabled(is_ready)
-            if hasattr(self, 'temperatureTab') and self.temperatureTab:
-                self.temperatureTab.setEnabled(is_ready)
-            if hasattr(self, 'motionTab') and self.motionTab:
-                # Motion tab has additional logic in buttonStatusUpdate, so only apply if not printing
-                if hasattr(self.main_window.printer_model, 'printer_status'):
-                    status = getattr(self.main_window.printer_model, 'printer_status', '')
-                    if status != "Printing":  # Don't override printing restriction
-                        self.motionTab.setEnabled(is_ready)
-            if hasattr(self, 'preferencesTab') and self.preferencesTab:
-                self.preferencesTab.setEnabled(is_ready)
-                
-        except Exception as e:
-            self.logger.error(f"Error updating ControlScreen UI for Klipper state {state}: {e}")
 
     def toggleFilamentRunout(self):
         """Toggle filament runout sensor persistent preference and apply live state."""
@@ -594,8 +706,7 @@ class ControlScreen(QWidget):
             # Update model preference (persists)
             self.main_window.printer_model.set_filament_runout_pref(enabled, persist=True)
             # Apply immediate state depending on current print status
-            if self.main_window.printer_model.printer_status in ["Printing", "Paused"]:
-                self.main_window.controller.apply_filament_sensor_state()
+            self.main_window.controller.apply_filament_sensor_state()
         except Exception as e:
             logger.error(f"Error in ControlScreen.toggleFilamentRunout: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.toggleFilamentRunout: {e}", overlay=True)
@@ -606,8 +717,7 @@ class ControlScreen(QWidget):
         try:
             enabled = self.toggleFilamentJamButton.isChecked()
             self.main_window.printer_model.set_filament_jam_pref(enabled, persist=True)
-            if self.main_window.printer_model.printer_status in ["Printing", "Paused"]:
-                self.main_window.controller.apply_filament_sensor_state()
+            self.main_window.controller.apply_filament_sensor_state()
         except Exception as e:
             logger.error(f"Error in ControlScreen.toggleFilamentJam: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.toggleFilamentJam: {e}", overlay=True)
@@ -665,176 +775,3 @@ class ControlScreen(QWidget):
         except Exception as e:
             logger.error(f"Error in ControlScreen.toggleCheckPrintCompatibility: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.toggleCheckPrintCompatibility: {e}", overlay=True)
-
-    def toggleFirmwareUpdate(self):
-        """Toggle firmware update check preference and persist the setting."""
-        logger.info("ControlScreen.toggleFirmwareUpdate started")
-        try:
-            enabled = self.toggleFirmwareUpdateButton.isChecked()
-            # Update model preference (persists)
-            self.main_window.printer_model.set_firmware_update_check_pref(enabled, persist=True)
-            self.logger.info(f"Firmware update check {'enabled' if enabled else 'disabled'}")
-        except Exception as e:
-            logger.error(f"Error in ControlScreen.toggleFirmwareUpdate: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.toggleFirmwareUpdate: {e}", overlay=True)
-
-    def toggleAdvancedDebugging(self):
-        """Toggle advanced debugging mode preference and persist the setting."""
-        logger.info("ControlScreen.toggleAdvancedDebugging started")
-        try:
-            enabled = self.advaceDebuggingModeButton.isChecked()
-            # Update model preference (persists and applies logging changes immediately)
-            self.main_window.printer_model.set_advanced_debugging_pref(enabled, persist=True)
-            self.logger.info(f"Advanced debugging mode {'enabled' if enabled else 'disabled'}")
-        except Exception as e:
-            logger.error(f"Error in ControlScreen.toggleAdvancedDebugging: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.toggleAdvancedDebugging: {e}", overlay=True)
-
-    def apply_scrollbar_styling(self):
-        """Apply custom scrollbar styling to all scroll areas in the control screen."""
-        try:
-            # Import QScrollArea and QScrollBar here to avoid import issues
-            from PyQt5.QtWidgets import QScrollArea, QScrollBar
-            from PyQt5.QtCore import QTimer
-            
-            # Find all scroll areas in the widget
-            scroll_areas = self.findChildren(QScrollArea)
-            
-            # More aggressive scrollbar style with higher specificity
-            scrollbar_style = """
-            QScrollArea {
-                background-color: transparent !important;
-                border: none !important;
-            }
-            
-            QScrollArea > QWidget {
-                background-color: transparent !important;
-            }
-            
-            QScrollArea > QWidget > QWidget {
-                background-color: transparent !important;
-            }
-            
-            QScrollBar:vertical {
-                border: 1px solid black !important;
-                border-radius: 5px !important;
-                background-color: rgb(40,40,40) !important;
-                width: 80px !important;
-                margin: 70px 0 70px 0 !important;
-            }
-            
-            QScrollBar::handle:vertical {
-                border-radius: 5px !important;
-                background: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255)) !important;
-                min-height: 20px !important;
-            }
-            
-            QScrollBar::add-line:vertical {
-                border: 1px solid black !important;
-                background: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255)) !important;
-                height: 65px !important;
-                border-radius: 5px !important;
-                subcontrol-position: bottom !important;
-                subcontrol-origin: margin !important;
-            }
-            
-            QScrollBar::sub-line:vertical {
-                border: 1px solid black !important;
-                background: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255)) !important;
-                height: 65px !important;
-                border-radius: 5px !important;
-                subcontrol-position: top !important;
-                subcontrol-origin: margin !important;
-            }
-            
-            QScrollBar::up-arrow:vertical {
-                image: url(:/Navigation/img/Navigation/arrows.png) !important;
-                width: 40px !important;
-                height: 40px !important;
-                padding: 5px !important;
-            }
-            
-            QScrollBar::down-arrow:vertical {
-                image: url(:/Navigation/img/Navigation/arrows-5.png) !important;
-                width: 40px !important;
-                height: 40px !important;
-                padding: 5px !important;
-            }
-            
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none !important;
-            }
-            """
-            
-            # Apply the style to each scroll area
-            for scroll_area in scroll_areas:
-                scroll_area.setStyleSheet(scrollbar_style)
-                
-                # Also try to find and style scrollbars directly
-                scrollbars = scroll_area.findChildren(QScrollBar)
-                for scrollbar in scrollbars:
-                    scrollbar.setStyleSheet(scrollbar_style)
-                    
-                self.logger.info(f"Applied scrollbar styling to scroll area: {scroll_area.objectName()}")
-            
-            # Schedule a delayed re-application to catch scrollbars that appear later
-            def reapply_scrollbar_styling():
-                try:
-                    current_scroll_areas = self.findChildren(QScrollArea)
-                    for scroll_area in current_scroll_areas:
-                        scroll_area.setStyleSheet(scrollbar_style)
-                        scrollbars = scroll_area.findChildren(QScrollBar)
-                        for scrollbar in scrollbars:
-                            scrollbar.setStyleSheet(scrollbar_style)
-                except Exception as e:
-                    self.logger.error(f"Error in delayed scrollbar styling: {e}")
-            
-            # Apply after a short delay to catch dynamically created scrollbars
-            QTimer.singleShot(1000, reapply_scrollbar_styling)
-                
-            if scroll_areas:
-                self.logger.info(f"Applied scrollbar styling to {len(scroll_areas)} scroll areas with tab widget context")
-                
-        except Exception as e:
-            self.logger.error(f"Error applying scrollbar styling: {e}", exc_info=True)
-
-    def homeXYAndSync(self):
-        """Home XY and sync tool state - assumes homing switches to T0"""
-        try:
-            self.logger.info("Homing XY and syncing tool state...")
-            
-            # Do the homing
-            self.octoprint_client.home(['x', 'y'])
-            
-            # For dual nozzle printers, homing typically switches to T0
-            # So we force sync to T0 after a short delay
-            if is_dual_nozzle_printer():
-                QtCore.QTimer.singleShot(2000, lambda: self.syncToT0AfterHoming())
-                
-        except Exception as e:
-            self.logger.error(f"Error in homeXYAndSync: {e}")
-
-    def homeZAndSync(self):
-        """Home Z and sync tool state - assumes homing switches to T0"""
-        try:
-            self.logger.info("Homing Z and syncing tool state...")
-            
-            # Do the homing
-            self.octoprint_client.home(['z'])
-            
-            # For dual nozzle printers, homing typically switches to T0
-            # So we force sync to T0 after a short delay
-            if is_dual_nozzle_printer():
-                QtCore.QTimer.singleShot(1500, lambda: self.syncToT0AfterHoming())
-                
-        except Exception as e:
-            self.logger.error(f"Error in homeZAndSync: {e}")
-
-    def syncToT0AfterHoming(self):
-        """Force sync UI to T0 after homing (since homing typically switches to T0)"""
-        try:
-            self.logger.info("Syncing UI to T0 after homing operation")
-            # Directly update the UI to reflect T0 as active
-            self.setActiveExtruder(0)
-        except Exception as e:
-            self.logger.error(f"Error syncing to T0 after homing: {e}")

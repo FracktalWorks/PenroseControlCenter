@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
+<ui version="4.0">s
  <class>Form</class>
  <widget class="QWidget" name="Form">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>652</width>
-    <height>419</height>
+    <width>1024</width>
+    <height>626</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -67,7 +67,6 @@
         <font>
          <family>Gotham</family>
          <pointsize>16</pointsize>
-         <weight>50</weight>
          <bold>false</bold>
          <underline>false</underline>
          <strikeout>false</strikeout>
@@ -98,7 +97,6 @@
         <font>
          <family>Montserrat</family>
          <pointsize>12</pointsize>
-         <weight>50</weight>
          <bold>false</bold>
          <underline>false</underline>
          <strikeout>false</strikeout>
@@ -141,7 +139,6 @@ background-color: rgba(255, 255, 255, 0);</string>
         <font>
          <family>Montserrat</family>
          <pointsize>12</pointsize>
-         <weight>50</weight>
          <bold>false</bold>
          <underline>false</underline>
          <strikeout>false</strikeout>
@@ -297,15 +294,14 @@ background-color: rgb(255, 255, 255,0);</string>
                  </property>
                  <property name="maximumSize">
                   <size>
-                   <width>50</width>
-                   <height>50</height>
+                   <width>70</width>
+                   <height>70</height>
                   </size>
                  </property>
                  <property name="font">
                   <font>
                    <family>Gotham</family>
                    <pointsize>16</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -387,7 +383,6 @@ background-color: rgb(255, 255, 255,0);</string>
                   <font>
                    <family>Montserrat</family>
                    <pointsize>12</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -464,7 +459,251 @@ QProgressBar {
                   <font>
                    <family>Montserrat</family>
                    <pointsize>12</pointsize>
-                   <weight>50</weight>
+                   <bold>false</bold>
+                   <underline>false</underline>
+                   <strikeout>false</strikeout>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">
+   color:  white;
+background-color: rgba(0, 0, 0, 0);</string>
+                 </property>
+                 <property name="text">
+                  <string>0</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="Line" name="heaterRingSeparationLine">
+             <property name="minimumSize">
+              <size>
+               <width>1</width>
+               <height>2</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>1</width>
+               <height>60</height>
+              </size>
+             </property>
+             <property name="contextMenuPolicy">
+              <enum>Qt::NoContextMenu</enum>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">background-color: rgb(40, 40, 40);</string>
+             </property>
+             <property name="frameShadow">
+              <enum>QFrame::Sunken</enum>
+             </property>
+             <property name="lineWidth">
+              <number>1</number>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="heaterRingLayout">
+             <property name="spacing">
+              <number>6</number>
+             </property>
+             <property name="rightMargin">
+              <number>10</number>
+             </property>
+             <item>
+              <layout class="QVBoxLayout" name="heaterRingVerticalLayout">
+               <item>
+                <spacer name="heaterRingVerticalSpacer1">
+                 <property name="orientation">
+                  <enum>Qt::Vertical</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>0</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item alignment="Qt::AlignHCenter">
+                <widget class="QLabel" name="heaterRingTextLabel">
+                 <property name="font">
+                  <font>
+                   <family>Montserrat</family>
+                   <pointsize>12</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">
+color: White;
+background-color: rgb(255, 255, 255,0);</string>
+                 </property>
+                 <property name="text">
+                  <string>Ring</string>
+                 </property>
+                </widget>
+               </item>
+               <item alignment="Qt::AlignHCenter|Qt::AlignVCenter">
+                <widget class="QLabel" name="heaterRingLabel">
+                 <property name="minimumSize">
+                  <size>
+                   <width>100</width>
+                   <height>100</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>100</width>
+                   <height>100</height>
+                  </size>
+                 </property>
+                 <property name="sizeIncrement">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="baseSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <family>Gotham</family>
+                   <pointsize>16</pointsize>
+                   <bold>false</bold>
+                   <underline>false</underline>
+                   <strikeout>false</strikeout>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">margin : 4px</string>
+                 </property>
+                 <property name="text">
+                  <string/>
+                 </property>
+                 <property name="pixmap">
+                  <pixmap resource="../resources/resource.qrc">:/Logos &amp; Branding/img/icons/heaterRing.png</pixmap>
+                 </property>
+                 <property name="scaledContents">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="heaterRingVerticalSpacer2">
+                 <property name="orientation">
+                  <enum>Qt::Vertical</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>0</width>
+                   <height>45</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QVBoxLayout" name="heaterRingTempVerticalLayout">
+               <property name="spacing">
+                <number>0</number>
+               </property>
+               <item alignment="Qt::AlignLeft|Qt::AlignBottom">
+                <widget class="QLabel" name="heaterRingTargetTemperature">
+                 <property name="font">
+                  <font>
+                   <family>Montserrat</family>
+                   <pointsize>12</pointsize>
+                   <bold>false</bold>
+                   <underline>false</underline>
+                   <strikeout>false</strikeout>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">
+   color:  white;
+background-color: rgba(255, 255, 255, 0);</string>
+                 </property>
+                 <property name="text">
+                  <string>0</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item alignment="Qt::AlignLeft">
+                <widget class="QProgressBar" name="heaterRingTempBar">
+                 <property name="minimumSize">
+                  <size>
+                   <width>15</width>
+                   <height>30</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>15</width>
+                   <height>60</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <family>Gotham</family>
+                   <pointsize>16</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QProgressBar::chunk {
+    border-radius: 5px;
+	background-color: qlineargradient(spread:pad, x1:0.517, y1:0, x2:0.522, y2:0, stop:0.0336134 rgba(255, 140, 74, 255), stop:1 rgba(242, 100, 53, 255));
+}
+
+QProgressBar {
+    border: 1px solid white;
+    border-radius: 5px;
+}
+</string>
+                 </property>
+                 <property name="maximum">
+                  <number>300</number>
+                 </property>
+                 <property name="value">
+                  <number>0</number>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                 <property name="textVisible">
+                  <bool>false</bool>
+                 </property>
+                 <property name="orientation">
+                  <enum>Qt::Vertical</enum>
+                 </property>
+                 <property name="format">
+                  <string>%v</string>
+                 </property>
+                </widget>
+               </item>
+               <item alignment="Qt::AlignLeft|Qt::AlignTop">
+                <widget class="QLabel" name="heaterRingActualTemperature">
+                 <property name="font">
+                  <font>
+                   <family>Montserrat</family>
+                   <pointsize>12</pointsize>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -569,15 +808,14 @@ background-color: rgb(255, 255, 255,0);</string>
                  </property>
                  <property name="maximumSize">
                   <size>
-                   <width>50</width>
-                   <height>50</height>
+                   <width>70</width>
+                   <height>70</height>
                   </size>
                  </property>
                  <property name="font">
                   <font>
                    <family>Gotham</family>
                    <pointsize>16</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -659,7 +897,6 @@ background-color: rgb(255, 255, 255,0);</string>
                   <font>
                    <family>Montserrat</family>
                    <pointsize>12</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -736,7 +973,6 @@ QProgressBar {
                   <font>
                    <family>Montserrat</family>
                    <pointsize>12</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -828,7 +1064,6 @@ background-color: rgba(0, 0, 0, 0);</string>
                   <font>
                    <family>Gotham</family>
                    <pointsize>16</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -892,7 +1127,6 @@ background-color: rgb(255, 255, 255,0);</string>
                   <font>
                    <family>Montserrat</family>
                    <pointsize>12</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -969,7 +1203,6 @@ QProgressBar {
                   <font>
                    <family>Montserrat</family>
                    <pointsize>12</pointsize>
-                   <weight>50</weight>
                    <bold>false</bold>
                    <underline>false</underline>
                    <strikeout>false</strikeout>
@@ -1019,7 +1252,6 @@ background-color: rgba(0, 0, 0, 0);</string>
                 <font>
                  <family>Gotham</family>
                  <pointsize>16</pointsize>
-                 <weight>50</weight>
                  <bold>false</bold>
                  <underline>false</underline>
                  <strikeout>false</strikeout>
@@ -1141,7 +1373,6 @@ background-color: rgb(255, 255, 255,0);</string>
                 <font>
                  <family>Gotham</family>
                  <pointsize>16</pointsize>
-                 <weight>50</weight>
                  <bold>false</bold>
                  <underline>false</underline>
                  <strikeout>false</strikeout>
@@ -1219,6 +1450,9 @@ background-color: rgb(255, 255, 255,0);</string>
       </item>
       <item>
        <widget class="QFrame" name="PrintPreviewFrame">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
         <property name="styleSheet">
          <string notr="true">QFrame {
     border: none;
@@ -1311,7 +1545,6 @@ background-color: rgb(255, 255, 255,0);</string>
               <font>
                <family>Montserrat</family>
                <pointsize>12</pointsize>
-               <weight>75</weight>
                <bold>true</bold>
                <kerning>false</kerning>
               </font>
@@ -1353,7 +1586,6 @@ background-color: rgba(255, 255, 255, 0);</string>
               <font>
                <family>Montserrat</family>
                <pointsize>12</pointsize>
-               <weight>75</weight>
                <bold>true</bold>
                <kerning>false</kerning>
               </font>
@@ -1389,7 +1621,6 @@ background-color: rgba(255, 255, 255, 0);</string>
               <font>
                <family>Montserrat</family>
                <pointsize>12</pointsize>
-               <weight>75</weight>
                <bold>true</bold>
                <kerning>false</kerning>
               </font>
@@ -1865,7 +2096,6 @@ QPushButton:focus {
          <font>
           <family>Gotham</family>
           <pointsize>16</pointsize>
-          <weight>50</weight>
           <italic>false</italic>
           <bold>false</bold>
           <stylestrategy>PreferAntialias</stylestrategy>

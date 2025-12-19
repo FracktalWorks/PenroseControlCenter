@@ -57,6 +57,7 @@ DEFAULT_TOOL0_PURGE_POSITION = {'X': -30, 'Y': -77}
 DEFAULT_TOOL1_PURGE_POSITION = {'X': 655, 'Y': -77}
 DEFAULT_PTFE_TUBE_LENGTH = 1500  # 2400 for 600x600, 1500 for 600x300 keep as multiples of 300 only
 DEFAULT_IS_DUAL_NOZZLE = True  # Set to False for single nozzle printers
+DEFAULT_HAS_HEATER_RING = False  # Set to True for Volterra ALF printers with heater ring
 
 # Dynamic printer configuration (loaded from Klipper at runtime)
 # These will be populated by load_printer_config_from_klipper()
@@ -66,6 +67,7 @@ tool0PurgePosition = DEFAULT_TOOL0_PURGE_POSITION.copy()
 tool1PurgePosition = DEFAULT_TOOL1_PURGE_POSITION.copy()
 ptfeTubeLength = DEFAULT_PTFE_TUBE_LENGTH
 IS_DUAL_NOZZLE = DEFAULT_IS_DUAL_NOZZLE
+HAS_HEATER_RING = DEFAULT_HAS_HEATER_RING
 
 
 def load_printer_config_from_klipper():
@@ -84,7 +86,7 @@ def load_printer_config_from_klipper():
             return False
             
         global calibrationPosition, machineBuildSize, tool0PurgePosition
-        global tool1PurgePosition, ptfeTubeLength, IS_DUAL_NOZZLE
+        global tool1PurgePosition, ptfeTubeLength, IS_DUAL_NOZZLE, HAS_HEATER_RING
         
         # Update global variables with extracted configuration
         if 'calibrationPosition' in config:
@@ -104,6 +106,9 @@ def load_printer_config_from_klipper():
             
         if 'IS_DUAL_NOZZLE' in config:
             IS_DUAL_NOZZLE = config['IS_DUAL_NOZZLE']
+
+        if 'HAS_HEATER_RING' in config:
+            HAS_HEATER_RING = config['HAS_HEATER_RING']
             
         return True
         
@@ -131,5 +136,6 @@ def get_printer_config():
         'tool0PurgePosition': tool0PurgePosition,
         'tool1PurgePosition': tool1PurgePosition,
         'ptfeTubeLength': ptfeTubeLength,
-        'IS_DUAL_NOZZLE': IS_DUAL_NOZZLE
+        'IS_DUAL_NOZZLE': IS_DUAL_NOZZLE,
+        'HAS_HEATER_RING': HAS_HEATER_RING
     }

@@ -317,6 +317,7 @@ class PrinterConfigManager:
                 'z_max': variables.get('bed_z_max', 200),
             },
             'is_dual_nozzle': bool(variables.get('is_dual_nozzle', 0)),
+            'has_heater_ring': bool(variables.get('has_heater_ring', 0)),
             'has_chamber_cooling': 'fan1' in variables,
             
             # Machine build size (compatible with config.py format)
@@ -351,6 +352,7 @@ class PrinterConfigManager:
             # Other settings
             'ptfeTubeLength': variables.get('ptfe_tube_length', 1500),
             'IS_DUAL_NOZZLE': bool(variables.get('is_dual_nozzle', 0)),
+            'HAS_HEATER_RING': bool(variables.get('has_heater_ring', 0)),
         }
         
         # Calculate bed dimensions for backwards compatibility
