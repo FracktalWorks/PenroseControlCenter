@@ -532,7 +532,7 @@ class PrinterModel(QObject):
                 # Update our local configuration properties
                 self.calibrationPosition = config.calibrationPosition
                 self.tool0PurgePosition = config.tool0PurgePosition
-                self.tool1PurgePosition = config.tool1PurgePosition
+                self.tool1PurgePosition = config.tool1PurgePosition 
                 self.ptfeTubeLength = config.ptfeTubeLength
                 self.machineBuildSize = config.machineBuildSize
                 self.IS_DUAL_NOZZLE = config.IS_DUAL_NOZZLE

@@ -189,7 +189,7 @@ class MainController(QtCore.QObject):
             self.updateLoadingProgress(98, "Initializing websocket connection...")
             self.initialize_websocket()
             self.updateLoadingProgress(99, "Checking Klipper configuration...")
-            self.checkKlipperPrinterCFG()
+            #self.checkKlipperPrinterCFG()
             # Check for firmware updates during startup if enabled
             self.check_firmware_update()
             self.updateLoadingProgress(100, "Startup complete!")
