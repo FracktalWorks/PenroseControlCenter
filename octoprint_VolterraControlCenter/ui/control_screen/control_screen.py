@@ -85,20 +85,17 @@ class ControlScreen(QWidget):
         self.ring250PreheatButton = self.findChild(QPushButton, "ring250PreheatButton")
         self.ringStatusLabel = self.findChild(QLabel, "ringStatusLabel")
 
-        # Unified temperature control widgets
-        self.temperatureStatusLabel = self.findChild(QLabel, "temperatureStatusLabel")
-        self.unifiedTempSpinBox = self.findChild(QSpinBox, "universalTempSpinBox")
-        self.unifiedTempSetButton = self.findChild(QPushButton, "setUniversalTempButton")
-        self.ringButton = self.findChild(QPushButton, "ringSelectButton")
-        self.chamberButton = self.findChild(QPushButton, "chamberSelectButton")
-        self.spoolButton = self.findChild(QPushButton, "spoolSelectButton")
-        
-        # Unified preset temperature buttons
-        self.unifiedPreset1Button = self.findChild(QPushButton, "preset1Button")
-        self.unifiedPreset2Button = self.findChild(QPushButton, "preset2Button")
-        
-        # Initialize selected heater
-        self.selectedHeater = "Ring"  # Default to Ring heater
+        # Chamber heater temperature controls
+        self.chamberTempSpinBox = self.findChild(QSpinBox, "chamberTempSpinBox")
+        self.setChamberTempButton = self.findChild(QPushButton, "setChamberTempButton")
+        self.chamber50PreheatButton = self.findChild(QPushButton, "chamber50PreheatButton")
+        self.chamber90PreheatButton = self.findChild(QPushButton, "chamber90PreheatButton")
+
+        # Spool (Filament) heater temperature controls
+        self.spoolTempSpinBox = self.findChild(QSpinBox, "spoolTempSpinBox")
+        self.setSpoolTempButton = self.findChild(QPushButton, "setSpoolTempButton")
+        self.spool40PreheatButton = self.findChild(QPushButton, "spool40PreheatButton")
+        self.spool60PreheatButton = self.findChild(QPushButton, "spool60PreheatButton")
 
         # Motion controls
         self.step1mmButton = self.findChild(QPushButton, "step1mmButton")
@@ -134,11 +131,6 @@ class ControlScreen(QWidget):
             self.toggleAutoResumeButton, self.toggleCheckPrintCompatibilityButton,
             self.togglePrintRestoreButton
         ], "ControlScreen")
-        
-        # Log optional widgets status
-        self.logger.debug(f"Optional widgets - ringTempSpinBox: {self.ringTempSpinBox is not None}, "
-                         f"unifiedTempSpinBox: {self.unifiedTempSpinBox is not None}, "
-                         f"temperatureStatusLabel: {self.temperatureStatusLabel is not None}")
 
         # set the active extruder to 0 initially
         self.setActiveExtruder(0)  # Default to extruder 0
@@ -173,19 +165,21 @@ class ControlScreen(QWidget):
         if self.ring250PreheatButton:
             self.ring250PreheatButton.pressed.connect(lambda: self.preheatRingTemp(250))
 
-        # Unified temperature control signal connections (optional - may not exist in all UI versions)
-        if self.unifiedTempSetButton:
-            self.unifiedTempSetButton.clicked.connect(self.setUnifiedTemp)
-        if self.ringButton:
-            self.ringButton.clicked.connect(lambda: self.selectHeater("Ring"))
-        if self.chamberButton:
-            self.chamberButton.clicked.connect(lambda: self.selectHeater("Chamber"))
-        if self.spoolButton:
-            self.spoolButton.clicked.connect(lambda: self.selectHeater("Spool"))
-        if self.unifiedPreset1Button:
-            self.unifiedPreset1Button.clicked.connect(self.setUnifiedPreset1)
-        if self.unifiedPreset2Button:
-            self.unifiedPreset2Button.clicked.connect(self.setUnifiedPreset2)
+        # Chamber heater signal connections (optional - may not exist in all UI versions)
+        if self.setChamberTempButton:
+            self.setChamberTempButton.clicked.connect(self.setChamberTemp)
+        if self.chamber50PreheatButton:
+            self.chamber50PreheatButton.pressed.connect(lambda: self.preheatChamberTemp(50))
+        if self.chamber90PreheatButton:
+            self.chamber90PreheatButton.pressed.connect(lambda: self.preheatChamberTemp(90))
+
+        # Spool (Filament) heater signal connections (optional - may not exist in all UI versions)
+        if self.setSpoolTempButton:
+            self.setSpoolTempButton.clicked.connect(self.setSpoolTemp)
+        if self.spool40PreheatButton:
+            self.spool40PreheatButton.pressed.connect(lambda: self.preheatSpoolTemp(40))
+        if self.spool60PreheatButton:
+            self.spool60PreheatButton.pressed.connect(lambda: self.preheatSpoolTemp(60))
 
         # Motion Buttons Signal Connections
         self.step1mmButton.clicked.connect(lambda: self.setStep(1))
@@ -217,7 +211,8 @@ class ControlScreen(QWidget):
         self.togglePrintRestoreButton.clicked.connect(self.togglePrintRestore)
 
         # Configure spinboxes
-        for spinbox in [self.feedRateSpinBox, self.toolTempSpinBox, self.bedTempSpinBox, self.flowRateSpinBox, self.ringTempSpinBox, self.unifiedTempSpinBox]:
+        for spinbox in [self.feedRateSpinBox, self.toolTempSpinBox, self.bedTempSpinBox, self.flowRateSpinBox, 
+                       self.ringTempSpinBox, self.chamberTempSpinBox, self.spoolTempSpinBox]:
             if spinbox:
                 spinbox.lineEdit().setReadOnly(True)
                 # spinbox.lineEdit().setDisabled(True)
@@ -250,16 +245,6 @@ class ControlScreen(QWidget):
             self.toggleAutoResumeButton.setEnabled(print_restore_enabled)
         except Exception as e:
             self.logger.warning(f"Failed initializing toggle buttons: {e}")
-
-        # Initialize unified temperature control
-        try:
-            # Set default heater selection to Ring
-            self.selectHeater("Ring")
-            # Initialize temperature status display
-            self.updateTemperatureStatusLabel()
-        except Exception as e:
-            self.logger.warning(f"Failed initializing unified temperature control: {e}")
-
 
         # Connect to printer model for status updates
         self.main_window.printer_model.status_updated.connect(self.buttonStatusUpdate)
@@ -324,21 +309,20 @@ class ControlScreen(QWidget):
             self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
             # octopiclient.setToolTemperature({"tool0": 0})
             self.octoprint_client.setBedTemperature(0)
-            # Turn off ring heater - you'll need to provide the correct M-code here
+            # Turn off all heaters
             self.octoprint_client.gcode(command='M104 P2 S0')  # Ring heater
-            self.octoprint_client.gcode(command='M104 P3 S0')  # Chamber heater
-            self.octoprint_client.gcode(command='M104 P4 S0')  # Spool heater
+            self.octoprint_client.gcode(command='M141 S0')      # Chamber heater
+            self.octoprint_client.gcode(command='M142 S0')      # Filament/Spool heater
             
             # Update UI spinboxes
             self.toolTempSpinBox.setProperty("value", 0)
             self.bedTempSpinBox.setProperty("value", 0)
             if self.ringTempSpinBox:
                 self.ringTempSpinBox.setProperty("value", 0)
-            if self.unifiedTempSpinBox:
-                self.unifiedTempSpinBox.setProperty("value", 0)
-                
-            # Update temperature status
-            self.updateTemperatureStatusLabel()
+            if self.chamberTempSpinBox:
+                self.chamberTempSpinBox.setProperty("value", 0)
+            if self.spoolTempSpinBox:
+                self.spoolTempSpinBox.setProperty("value", 0)
         except Exception as e:
             logger.error("Error in ControlScreen.coolDownAction: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.coolDownAction: {}".format(e), overlay=True)
@@ -441,153 +425,57 @@ class ControlScreen(QWidget):
             logger.error("Error in ControlScreen.preheatRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.preheatRingTemp: {}".format(e), overlay=True)
 
-    def selectHeater(self, heater_name):
+    def setChamberTemp(self):
         """
-        Select which heater to control with the unified temperature control.
-        Updates button states and preset button texts.
+        Sets the temperature of the chamber heater using M141 command
         """
-        logger.info(f"ControlScreen.selectHeater: {heater_name}")
+        logger.info("ControlScreen.setChamberTemp started")
         try:
-            # Check if unified temperature control widgets exist
-            if not all([self.ringButton, self.chamberButton, self.spoolButton, 
-                       self.unifiedPreset1Button, self.unifiedPreset2Button, self.unifiedTempSpinBox]):
-                self.logger.debug("Unified temperature control widgets not available")
-                return
-                
-            self.selectedHeater = heater_name
-            
-            # Update button checked states
-            self.ringButton.setChecked(heater_name == "Ring")
-            self.chamberButton.setChecked(heater_name == "Chamber")
-            self.spoolButton.setChecked(heater_name == "Spool")
-            
-            # Update preset button texts and values based on selected heater
-            if heater_name == "Ring":
-                self.unifiedPreset1Button.setText("180°C")
-                self.unifiedPreset2Button.setText("250°C")
-                # Set spinbox to current ring temperature if available
-                if hasattr(self.main_window.printer_model, 'temperatures'):
-                    ring_temp = self.main_window.printer_model.temperatures.get("ring", 0)
-                    self.unifiedTempSpinBox.setValue(int(ring_temp))
-            elif heater_name == "Chamber":
-                self.unifiedPreset1Button.setText("50°C")
-                self.unifiedPreset2Button.setText("80°C")
-                # Set spinbox to current chamber temperature if available
-                if hasattr(self.main_window.printer_model, 'temperatures'):
-                    chamber_temp = self.main_window.printer_model.temperatures.get("chamber", 0)
-                    self.unifiedTempSpinBox.setValue(int(chamber_temp))
-            elif heater_name == "Spool":
-                self.unifiedPreset1Button.setText("50°C")
-                self.unifiedPreset2Button.setText("80°C")
-                # Set spinbox to current spool temperature if available
-                if hasattr(self.main_window.printer_model, 'temperatures'):
-                    spool_temp = self.main_window.printer_model.temperatures.get("spool", 0)
-                    self.unifiedTempSpinBox.setValue(int(spool_temp))
-            
-            # Update the temperature status display
-            self.updateTemperatureStatusLabel()
-            
+            temp = self.chamberTempSpinBox.value()
+            self.octoprint_client.gcode(command=f'M141 S{temp}')
         except Exception as e:
-            logger.error(f"Error in ControlScreen.selectHeater: {e}")
+            logger.error("Error in ControlScreen.setChamberTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setChamberTemp: {}".format(e), overlay=True)
 
-    def setUnifiedTemp(self):
+    def preheatChamberTemp(self, temp):
         """
-        Set the temperature for the currently selected heater.
+        Preheats the chamber heater to the given temperature using M141 command
+        param temp: temperature to preheat to
         """
-        logger.info(f"ControlScreen.setUnifiedTemp for {self.selectedHeater}")
+        logger.info("ControlScreen.preheatChamberTemp started")
         try:
-            if not self.unifiedTempSpinBox:
-                return
-                
-            temp = self.unifiedTempSpinBox.value()
-            
-            if self.selectedHeater == "Ring":
-                # Ring heater G-code (update with correct command)
-                self.octoprint_client.gcode(command=f'M104 P2 S{temp}')
-            elif self.selectedHeater == "Chamber":
-                # Chamber heater G-code (update with correct command)
-                self.octoprint_client.gcode(command=f'M104 P3 S{temp}')
-            elif self.selectedHeater == "Spool":
-                # Spool heater G-code (update with correct command)
-                self.octoprint_client.gcode(command=f'M104 P4 S{temp}')
-                
+            self.octoprint_client.gcode(command=f'M141 S{temp}')
+            if self.chamberTempSpinBox:
+                self.chamberTempSpinBox.setProperty("value", temp)
         except Exception as e:
-            logger.error(f"Error in ControlScreen.setUnifiedTemp: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.setUnifiedTemp: {e}", overlay=True)
+            logger.error("Error in ControlScreen.preheatChamberTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatChamberTemp: {}".format(e), overlay=True)
 
-    def setUnifiedPreset1(self):
+    def setSpoolTemp(self):
         """
-        Set the first preset temperature for the currently selected heater.
+        Sets the temperature of the filament/spool heater using M142 command
         """
-        logger.info(f"ControlScreen.setUnifiedPreset1 for {self.selectedHeater}")
+        logger.info("ControlScreen.setSpoolTemp started")
         try:
-            if not self.unifiedTempSpinBox:
-                return
-                
-            if self.selectedHeater == "Ring":
-                temp = 180
-            elif self.selectedHeater == "Chamber":
-                temp = 50
-            elif self.selectedHeater == "Spool":
-                temp = 50
-            else:
-                return
-            
-            self.unifiedTempSpinBox.setValue(temp)
-            self.setUnifiedTemp()
-            
+            temp = self.spoolTempSpinBox.value()
+            self.octoprint_client.gcode(command=f'M142 S{temp}')
         except Exception as e:
-            logger.error(f"Error in ControlScreen.setUnifiedPreset1: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.setUnifiedPreset1: {e}", overlay=True)
+            logger.error("Error in ControlScreen.setSpoolTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setSpoolTemp: {}".format(e), overlay=True)
 
-    def setUnifiedPreset2(self):
+    def preheatSpoolTemp(self, temp):
         """
-        Set the second preset temperature for the currently selected heater.
+        Preheats the filament/spool heater to the given temperature using M142 command
+        param temp: temperature to preheat to
         """
-        logger.info(f"ControlScreen.setUnifiedPreset2 for {self.selectedHeater}")
+        logger.info("ControlScreen.preheatSpoolTemp started")
         try:
-            if not self.unifiedTempSpinBox:
-                return
-                
-            if self.selectedHeater == "Ring":
-                temp = 250
-            elif self.selectedHeater == "Chamber":
-                temp = 80
-            elif self.selectedHeater == "Spool":
-                temp = 80
-            else:
-                return
-                
-            self.unifiedTempSpinBox.setValue(temp)
-            self.setUnifiedTemp()
-            
+            self.octoprint_client.gcode(command=f'M142 S{temp}')
+            if self.spoolTempSpinBox:
+                self.spoolTempSpinBox.setProperty("value", temp)
         except Exception as e:
-            logger.error(f"Error in ControlScreen.setUnifiedPreset2: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.setUnifiedPreset2: {e}", overlay=True)
-
-    def updateTemperatureStatusLabel(self):
-        """
-        Update the unified temperature status label with current temperatures.
-        """
-        try:
-            # Check if the label exists
-            if not self.temperatureStatusLabel:
-                return
-                
-            if hasattr(self.main_window.printer_model, 'temperatures'):
-                temps = self.main_window.printer_model.temperatures
-                ring_temp = temps.get("ring", 0)
-                chamber_temp = temps.get("chamber", 0)
-                spool_temp = temps.get("spool", 0)
-                
-                status_text = f"Ring: {ring_temp}°C | Chamber: {chamber_temp}°C | Spool: {spool_temp}°C"
-                self.temperatureStatusLabel.setText(status_text)
-            else:
-                self.temperatureStatusLabel.setText("Ring: --°C | Chamber: --°C | Spool: --°C")
-        except Exception as e:
-            logger.error(f"Error in ControlScreen.updateTemperatureStatusLabel: {e}")
-            if self.temperatureStatusLabel:
-                self.temperatureStatusLabel.setText("Ring: --°C | Chamber: --°C | Spool: --°C")
+            logger.error("Error in ControlScreen.preheatSpoolTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatSpoolTemp: {}".format(e), overlay=True)
 
     def selectToolTemperature(self):
         """
@@ -688,9 +576,6 @@ class ControlScreen(QWidget):
                 self.motionTab.setDisabled(True)
             else:  # Paused, Offline, Operational, etc.
                 self.motionTab.setDisabled(False)
-                    
-            # Update unified temperature status display
-            self.updateTemperatureStatusLabel()
             
             # TODO: Add other control-specific UI updates based on status
             # For example: disable certain temperature controls, etc.
