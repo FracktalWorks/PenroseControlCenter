@@ -481,7 +481,7 @@ class HomeScreen(QWidget):
             try:
                 if self.printerStatusText == "Operational":
                     if self.playPauseButton.isChecked():
-                        #self.main_window.controller.checkKlipperPrinterCFG()
+                        self.main_window.controller.checkKlipperPrinterCFG()
                         self.octoprint_client.startPrint()
                 elif self.printerStatusText == "Printing":
                     self.octoprint_client.pausePrint()

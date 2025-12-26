@@ -394,7 +394,7 @@ class PrintFromLocation(QWidget):
         try:
             self.octoprint_client.home(['x', 'y', 'z'])
             self.octoprint_client.selectFile(self.fileListWidgetLocal.currentItem().text(), True)
-            #self.main_window.controller.checkKlipperPrinterCFG()
+            self.main_window.controller.checkKlipperPrinterCFG()
             self.main_window.switch_to_home_screen()
         except Exception as e:
             self.logger.error("Error in PrintFromLocation.printFile: {}".format(e))
