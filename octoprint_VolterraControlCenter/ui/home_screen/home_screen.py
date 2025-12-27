@@ -80,6 +80,20 @@ class HomeScreen(QWidget):
         self.bedActualTemperature = self.findChild(QLabel, "bedActualTemperature")
         self.bedTempBar = self.findChild(QProgressBar, "bedTempBar")
 
+        # Temperature displays - Chamber
+        self.chamberTargetTemperature = self.findChild(QLabel, "chamberTargetTemperature")
+        self.chamberActualTemperature = self.findChild(QLabel, "chamberActualTemperature")
+        self.chamberTempBar = self.findChild(QProgressBar, "chamberTempBar")
+        self.chamberLabel = self.findChild(QLabel, "chamberLabel")
+        self.chamberTextLabel = self.findChild(QLabel, "chamberTextLabel")
+
+        # Temperature displays - Spool/Filament
+        self.spoolTargetTemperature = self.findChild(QLabel, "spoolTargetTemperature")
+        self.spoolActualTemperature = self.findChild(QLabel, "spoolActualTemperature")
+        self.spoolTempBar = self.findChild(QProgressBar, "spoolTempBar")
+        self.spoolLabel = self.findChild(QLabel, "spoolLabel")
+        self.spoolTextLabel = self.findChild(QLabel, "spoolTextLabel")
+
         # Status components
         self.printerStatus = self.findChild(QLabel, "printerStatus")
         self.printerStatusColour = self.findChild(QLabel, "printerStatusColour")
@@ -346,6 +360,14 @@ class HomeScreen(QWidget):
                 temperature['bedActual'] = 0
             if temperature['bedTarget'] is None:
                 temperature['bedTarget'] = 0
+            if temperature.get('chamberActual') is None:
+                temperature['chamberActual'] = 0
+            if temperature.get('chamberTarget') is None:
+                temperature['chamberTarget'] = 0
+            if temperature.get('filamentActual') is None:
+                temperature['filamentActual'] = 0
+            if temperature.get('filamentTarget') is None:
+                temperature['filamentTarget'] = 0
 
             # Update extruder 0 temperature
             if temperature['tool0Target'] == 0:
@@ -404,6 +426,38 @@ class HomeScreen(QWidget):
                     self.heaterRingActualTemperature.setText(str(int(heater_ring_actual)) + "°C")
                 if self.heaterRingTargetTemperature:
                     self.heaterRingTargetTemperature.setText(str(int(heater_ring_target)) + "°C")
+
+            # Update chamber temperature
+            chamber_actual = temperature.get('chamberActual', 0) or 0
+            chamber_target = temperature.get('chamberTarget', 0) or 0
+            
+            if chamber_target == 0:
+                self.chamberTempBar.setMaximum(100)
+                self.chamberTempBar.setStyleSheet(styles.bar_heater_cold)
+            elif chamber_actual <= chamber_target:
+                self.chamberTempBar.setMaximum(chamber_target)
+                self.chamberTempBar.setStyleSheet(styles.bar_heater_heating)
+            else:
+                self.chamberTempBar.setMaximum(chamber_actual)
+            self.chamberTempBar.setValue(int(chamber_actual))
+            self.chamberActualTemperature.setText(str(int(chamber_actual)) + "°C")
+            self.chamberTargetTemperature.setText(str(int(chamber_target)) + "°C")
+
+            # Update filament/spool temperature
+            filament_actual = temperature.get('filamentActual', 0) or 0
+            filament_target = temperature.get('filamentTarget', 0) or 0
+            
+            if filament_target == 0:
+                self.spoolTempBar.setMaximum(100)
+                self.spoolTempBar.setStyleSheet(styles.bar_heater_cold)
+            elif filament_actual <= filament_target:
+                self.spoolTempBar.setMaximum(filament_target)
+                self.spoolTempBar.setStyleSheet(styles.bar_heater_heating)
+            else:
+                self.spoolTempBar.setMaximum(filament_actual)
+            self.spoolTempBar.setValue(int(filament_actual))
+            self.spoolActualTemperature.setText(str(int(filament_actual)) + "°C")
+            self.spoolTargetTemperature.setText(str(int(filament_target)) + "°C")
 
         except (KeyError, TypeError, ValueError) as e:
             self.logger.warning(f"Error updating temperature display: {e}")

@@ -739,6 +739,30 @@ class octoprintAPI:
         headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
         requests.post(url, data=json.dumps(payload), headers=headers)
 
+    def setChamberTemperature(self, target):
+        """
+        Sets the given target temperature on the printer's chamber heater.
+        
+        target: Target temperature to set.
+        """
+        url = 'http://' + self.ip + '/api/printer/chamber'
+        payload = {'command': 'target', 'target': target}
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        requests.post(url, data=json.dumps(payload), headers=headers)
+
+    def setFilamentTemperature(self, target):
+        """
+        Sets the given target temperature on the printer's filament/spool heater.
+        
+        target: Target temperature to set.
+        """
+        # Note: Klipper uses heater_generic for additional heaters like filament
+        # The actual endpoint depends on OctoPrint configuration
+        url = 'http://' + self.ip + '/api/printer/chamber'  # May need adjustment based on setup
+        payload = {'command': 'target', 'target': target, 'heater': 'filament'}
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        requests.post(url, data=json.dumps(payload), headers=headers)
+
     def initialiseSd(self):
         """
         Initializes the printer's SD card, making it available for use.
