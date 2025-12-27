@@ -310,9 +310,9 @@ class ControlScreen(QWidget):
             # octopiclient.setToolTemperature({"tool0": 0})
             self.octoprint_client.setBedTemperature(0)
             # Turn off all heaters
-            self.octoprint_client.gcode(command='M104 P2 S0')  # Ring heater
-            self.octoprint_client.gcode(command='M141 S0')      # Chamber heater
-            self.octoprint_client.gcode(command='M142 S0')      # Filament/Spool heater
+            self.octoprint_client.gcode(command='M143 S0')  # Ring heater (PWM control)
+            self.octoprint_client.gcode(command='M141 S0')  # Chamber heater
+            self.octoprint_client.gcode(command='M142 S0')  # Filament/Spool heater
             
             # Update UI spinboxes
             self.toolTempSpinBox.setProperty("value", 0)
@@ -398,27 +398,27 @@ class ControlScreen(QWidget):
 
     def setRingTemp(self):
         """
-        Sets the temperature of the ring heater
+        Sets the power level of the ring heater using M143 command
+        Ring heater uses PWM control (0-255), where 255 = 50% max power
         """
         logger.info("ControlScreen.setRingTemp started")
         try:
-            # You'll need to provide the correct G/M-code for ring heater here
-            # This is a placeholder - update with the correct command for your ring heater
-            self.octoprint_client.gcode(command='M104 P2 S' + str(self.ringTempSpinBox.value()))
+            # M143 controls ring heater PWM (0-255, limited to 50% max power)
+            temp = self.ringTempSpinBox.value()
+            self.octoprint_client.gcode(command=f'M143 S{temp}')
         except Exception as e:
             logger.error("Error in ControlScreen.setRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.setRingTemp: {}".format(e), overlay=True)
 
     def preheatRingTemp(self, temp):
         """
-        Preheats the ring heater to the given temperature
-        param temp: temperature to preheat to
+        Sets the ring heater to a preset power level using M143 command
+        param temp: power level (0-255) to set the ring heater to
         """
         logger.info("ControlScreen.preheatRingTemp started")
         try:
-            # You'll need to provide the correct G/M-code for ring heater here
-            # This is a placeholder - update with the correct command for your ring heater
-            self.octoprint_client.gcode(command='M104 P2 S' + str(temp))
+            # M143 controls ring heater PWM (0-255, limited to 50% max power)
+            self.octoprint_client.gcode(command=f'M143 S{temp}')
             if self.ringTempSpinBox:
                 self.ringTempSpinBox.setProperty("value", temp)
         except Exception as e:
