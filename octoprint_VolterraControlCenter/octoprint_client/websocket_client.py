@@ -61,6 +61,9 @@ class OctoPrintWebSocket(QThread):
     
     # Probe accuracy results signal for MVP architecture
     probe_accuracy_signal = pyqtSignal(str)  # Raw probe accuracy message string
+    
+    # Ring heater power signal
+    ring_heater_power_signal = pyqtSignal(int)  # Power level 0-255
 
     def __init__(self, ip="0.0.0.0:5000", api_key=None):
         """
@@ -648,6 +651,19 @@ class OctoPrintWebSocket(QThread):
                                         self.z_probing_failed_signal.emit()
                                     except Exception as e:
                                         self.logger.error(f"Error emitting z_probing_failed_signal: {e}")
+                                
+                                # Ring heater power level updates (M143 responses)
+                                elif 'Ring heater set to' in item:
+                                    try:
+                                        # Parse "Ring heater set to XX.X% (YYY/255, max ZZ%)"
+                                        import re
+                                        match = re.search(r'\((\d+)/255', item)
+                                        if match:
+                                            power_level = int(match.group(1))
+                                            self.logger.debug(f"Ring heater power: {power_level}/255")
+                                            self.ring_heater_power_signal.emit(power_level)
+                                    except Exception as e:
+                                        self.logger.error(f"Error parsing ring heater power: {e}")
 
                                 # Error messages - Check for errors - emit all errors, let showPrinterError decide what to show
                                 elif item.startswith('!!') or item.startswith('Error'):

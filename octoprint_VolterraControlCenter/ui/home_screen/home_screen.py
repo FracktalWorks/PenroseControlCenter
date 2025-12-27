@@ -109,6 +109,9 @@ class HomeScreen(QWidget):
         # Feed rate and flow rate labels
         self.feedRateLabel = self.findChild(QLabel, "feedRateLabel")
         self.flowRateLabel = self.findChild(QLabel, "flowRateLabel")
+        
+        # Ring heater power label (ALF)
+        self.ALFLabel = self.findChild(QLabel, "ALFLabel")
 
         # Validate UI components
         all_components = [
@@ -131,6 +134,8 @@ class HomeScreen(QWidget):
         # Connect feed rate and flow rate signals
         self.main_window.printer_model.feed_rate_updated.connect(self.updateFeedRate)
         self.main_window.printer_model.flow_rate_updated.connect(self.updateFlowRate)
+        # Connect ring heater power signal
+        self.main_window.printer_model.ring_heater_power_updated.connect(self.updateRingPower)
         # New: reflect loaded filament/nozzle
         try:
             self.main_window.printer_model.tool_bay_states_loaded.connect(self.on_tool_states_loaded)
@@ -176,6 +181,10 @@ class HomeScreen(QWidget):
         # Initialize feed rate and flow rate labels
         self.feedRateLabel.setText("100%")
         self.flowRateLabel.setText("100%")
+        
+        # Initialize ring power label (ALF)
+        if self.ALFLabel:
+            self.ALFLabel.setText("0%")
         
         # Set initial values from printer model if available
         try:
@@ -606,6 +615,16 @@ class HomeScreen(QWidget):
             self.flowRateLabel.setText(f"{rate}%")
         except Exception as e:
             self.logger.error(f"Error updating flow rate label: {e}")
+    
+    def updateRingPower(self, power):
+        """Update the ring heater power label (ALF) when power changes."""
+        try:
+            if self.ALFLabel:
+                # Convert 0-255 to percentage
+                percentage = int((power / 255.0) * 100)
+                self.ALFLabel.setText(f"{percentage}%")
+        except Exception as e:
+            self.logger.error(f"Error updating ring power label: {e}")
 
     # --- New slots for tool state reflection on HomeScreen ---
     def on_tool_states_loaded(self, states: dict):

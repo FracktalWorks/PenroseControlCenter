@@ -263,6 +263,8 @@ class MainController(QtCore.QObject):
         self.octoprint_websocket.filament_runout_state_signal.connect(self.printer_model.filamentRunoutState)
         # Probe accuracy results signal for MVP architecture
         self.octoprint_websocket.probe_accuracy_signal.connect(self.printer_model.handle_probe_accuracy_result)
+        # Ring heater power signal
+        self.octoprint_websocket.ring_heater_power_signal.connect(self.printer_model.update_ring_heater_power)
         # Controller signal wiring
         self.octoprint_websocket.connected_signal.connect(self.onPrinterConnected)
         # Connect to printer model status updates to detect first "Operational" status during startup

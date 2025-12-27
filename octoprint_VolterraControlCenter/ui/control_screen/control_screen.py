@@ -310,7 +310,7 @@ class ControlScreen(QWidget):
             # octopiclient.setToolTemperature({"tool0": 0})
             self.octoprint_client.setBedTemperature(0)
             # Turn off all heaters
-            self.octoprint_client.gcode(command='M143 S0')  # Ring heater (PWM control)
+            self.octoprint_client.gcode(command='M144')  # Ring heater off (M144)
             self.octoprint_client.gcode(command='M141 S0')  # Chamber heater
             self.octoprint_client.gcode(command='M142 S0')  # Filament/Spool heater
             
@@ -323,6 +323,9 @@ class ControlScreen(QWidget):
                 self.chamberTempSpinBox.setProperty("value", 0)
             if self.spoolTempSpinBox:
                 self.spoolTempSpinBox.setProperty("value", 0)
+            
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(0)
         except Exception as e:
             logger.error("Error in ControlScreen.coolDownAction: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.coolDownAction: {}".format(e), overlay=True)
@@ -406,6 +409,8 @@ class ControlScreen(QWidget):
             # M143 controls ring heater PWM (0-255, limited to 50% max power)
             temp = self.ringTempSpinBox.value()
             self.octoprint_client.gcode(command=f'M143 S{temp}')
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(temp)
         except Exception as e:
             logger.error("Error in ControlScreen.setRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.setRingTemp: {}".format(e), overlay=True)
@@ -421,6 +426,8 @@ class ControlScreen(QWidget):
             self.octoprint_client.gcode(command=f'M143 S{temp}')
             if self.ringTempSpinBox:
                 self.ringTempSpinBox.setProperty("value", temp)
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(temp)
         except Exception as e:
             logger.error("Error in ControlScreen.preheatRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.preheatRingTemp: {}".format(e), overlay=True)

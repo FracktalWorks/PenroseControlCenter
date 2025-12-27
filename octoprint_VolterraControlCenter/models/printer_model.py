@@ -41,6 +41,7 @@ class PrinterModel(QObject):
     # Signals for feed rate and flow rate updates
     feed_rate_updated = pyqtSignal(int)  # Feed rate percentage
     flow_rate_updated = pyqtSignal(int)  # Flow rate percentage
+    ring_heater_power_updated = pyqtSignal(int)  # Ring heater power 0-255
     # Signal for printer configuration changes
     printer_config_updated = pyqtSignal(dict)  # Emitted when printer configuration changes
     
@@ -138,6 +139,9 @@ class PrinterModel(QObject):
         # Feed rate and flow rate storage
         self.current_feed_rate = 100  # Default 100%
         self.current_flow_rate = 100  # Default 100%
+        
+        # Ring heater power storage
+        self.ring_heater_power = 0  # Default 0 (0-255 range)
 
     # --- Filament sensor preference setters (called by controller/UI) -------
     def set_filament_runout_pref(self, enabled: bool, persist: bool = True):
@@ -235,6 +239,14 @@ class PrinterModel(QObject):
             self.flow_rate_updated.emit(self.current_flow_rate)
         except (ValueError, TypeError):
             self.logger.error(f"Invalid flow rate value: {rate}")
+    
+    def update_ring_heater_power(self, power: int):
+        """Update the current ring heater power and emit signal."""
+        try:
+            self.ring_heater_power = max(0, min(255, int(power)))  # Clamp between 0-255
+            self.ring_heater_power_updated.emit(self.ring_heater_power)
+        except (ValueError, TypeError):
+            self.logger.error(f"Invalid ring heater power value: {power}")
 
     def update_current_position(self, position_data: dict):
         """
