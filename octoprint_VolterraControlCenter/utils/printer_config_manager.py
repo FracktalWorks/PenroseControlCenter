@@ -117,6 +117,10 @@ class PrinterConfigManager:
         config_file = os.path.join(self.firmware_path, f"PRINTER_{printer_name}.cfg")
         if os.path.exists(config_file):
             # Extract a reasonable display name from the printer name
+            # Special handling for specific printer names
+            if printer_name == "VOLTERRA_ALF":
+                return "Volterra-ALF"
+            
             # Convert DRAGON_400 -> Dragon 400, TWINDRAGON_600 -> Twin Dragon 600, etc.
             display_name = printer_name.replace("_", " ").title()
             if display_name.startswith("Twindragon"):
