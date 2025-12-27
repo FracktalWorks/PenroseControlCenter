@@ -68,11 +68,8 @@ class HomeScreen(QWidget):
         self.tool1Label = self.findChild(QLabel, "tool1Label")
 
         # Temperature displays - Heater Ring (Volterra ALF specific)
-        self.heaterRingTargetTemperature = self.findChild(QLabel, "heaterRingTargetTemperature")
-        self.heaterRingActualTemperature = self.findChild(QLabel, "heaterRingActualTemperature")
-        self.heaterRingTempBar = self.findChild(QProgressBar, "heaterRingTempBar")
+        # Note: ALF ring heater uses power % display only (not temperature)
         self.heaterRingLabel = self.findChild(QLabel, "heaterRingLabel")
-        self.heaterRingTextLabel = self.findChild(QLabel, "heaterRingTextLabel")
         self.heaterRingSeparationLine = self.findChild(QFrame, "heaterRingSeparationLine")
 
         # Temperature displays - Bed
@@ -159,14 +156,6 @@ class HomeScreen(QWidget):
         self.tool1ActualTemperature.setText("0°C")
         self.tool1TargetTemperature.setText("0°C")
         self.tool1TempBar.setValue(0)
-
-        # Initialize heater ring temperature display (Volterra ALF)
-        if self.heaterRingActualTemperature:
-            self.heaterRingActualTemperature.setText("0°C")
-        if self.heaterRingTargetTemperature:
-            self.heaterRingTargetTemperature.setText("0°C")
-        if self.heaterRingTempBar:
-            self.heaterRingTempBar.setValue(0)
 
         self.bedActualTemperature.setText("0°C")
         self.bedTargetTemperature.setText("0°C")
@@ -417,24 +406,7 @@ class HomeScreen(QWidget):
             self.bedActualTemperature.setText(str(int(temperature['bedActual'])) + "°C")
             self.bedTargetTemperature.setText(str(int(temperature['bedTarget'])) + "°C")
 
-            # Update heater ring temperature (Volterra ALF specific)
-            if self.heaterRingTempBar and 'heaterRingActual' in temperature and 'heaterRingTarget' in temperature:
-                heater_ring_actual = temperature.get('heaterRingActual', 0) or 0
-                heater_ring_target = temperature.get('heaterRingTarget', 0) or 0
-                
-                if heater_ring_target == 0:
-                    self.heaterRingTempBar.setMaximum(300)
-                    self.heaterRingTempBar.setStyleSheet(styles.bar_heater_cold)
-                elif heater_ring_actual <= heater_ring_target:
-                    self.heaterRingTempBar.setMaximum(heater_ring_target)
-                    self.heaterRingTempBar.setStyleSheet(styles.bar_heater_heating)
-                else:
-                    self.heaterRingTempBar.setMaximum(heater_ring_actual)
-                self.heaterRingTempBar.setValue(int(heater_ring_actual))
-                if self.heaterRingActualTemperature:
-                    self.heaterRingActualTemperature.setText(str(int(heater_ring_actual)) + "°C")
-                if self.heaterRingTargetTemperature:
-                    self.heaterRingTargetTemperature.setText(str(int(heater_ring_target)) + "°C")
+            # Note: ALF ring heater power % is updated via updateRingPower() from ring_heater_power_updated signal
 
             # Update chamber temperature
             chamber_actual = temperature.get('chamberActual', 0) or 0

@@ -42,20 +42,11 @@ DUAL_NOZZLE_ELEMENTS = {
 }
 
 # UI elements that should only be shown for printers with heater ring (Volterra ALF)
+# Note: ALF ring heater shows power % only (via ALFLabel), not temperature
 HEATER_RING_ELEMENTS = {
     'home_screen': [
-        'heaterRingLayout', 'heaterRingLabel', 'heaterRingTextLabel',
-        'heaterRingTargetTemperature', 'heaterRingTempBar', 'heaterRingActualTemperature',
-        'heaterRingSeparationLine'
-    ]
-}
-
-# UI elements that should only be shown for printers with heater ring (Volterra ALF)
-HEATER_RING_ELEMENTS = {
-    'home_screen': [
-        'heaterRingLayout', 'heaterRingLabel', 'heaterRingTextLabel',
-        'heaterRingTargetTemperature', 'heaterRingTempBar', 'heaterRingActualTemperature',
-        'heaterRingSeparationLine'
+        'heaterRingLabel', 'ALFLabel', 'heaterRingSeparationLine',
+        'verticalLayout_13', 'label_15'  # ALF layout and text label
     ]
 }
 

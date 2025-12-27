@@ -78,12 +78,18 @@ class ControlScreen(QWidget):
         self.bed60PreheatButton = self.findChild(QPushButton, "bed60PreheatButton")
         self.bed100PreheatButton = self.findChild(QPushButton, "bed100PreheatButton")
 
-        # Ring heater temperature controls
+        # Ring heater temperature controls (legacy - may not exist)
         self.ringTempSpinBox = self.findChild(QSpinBox, "ringTempSpinBox")
         self.setRingTempButton = self.findChild(QPushButton, "setRingTempButton")
         self.ring200PreheatButton = self.findChild(QPushButton, "ring200PreheatButton")
         self.ring250PreheatButton = self.findChild(QPushButton, "ring250PreheatButton")
         self.ringStatusLabel = self.findChild(QLabel, "ringStatusLabel")
+        
+        # ALF Ring heater temperature controls (new)
+        self.ALFTempSpinBox = self.findChild(QSpinBox, "ALFTempSpinBox")
+        self.setALFTempButton = self.findChild(QPushButton, "setALFTempButton")
+        self.ALF50PreheatButton = self.findChild(QPushButton, "ALF50PreheatButton")
+        self.ALF10PreheatButton = self.findChild(QPushButton, "ALF10PreheatButton")
 
         # Chamber heater temperature controls
         self.chamberTempSpinBox = self.findChild(QSpinBox, "chamberTempSpinBox")
@@ -164,6 +170,14 @@ class ControlScreen(QWidget):
             self.ring200PreheatButton.pressed.connect(lambda: self.preheatRingTemp(200))
         if self.ring250PreheatButton:
             self.ring250PreheatButton.pressed.connect(lambda: self.preheatRingTemp(250))
+        
+        # ALF Ring heater signal connections
+        if self.setALFTempButton:
+            self.setALFTempButton.clicked.connect(self.setALFTemp)
+        if self.ALF50PreheatButton:
+            self.ALF50PreheatButton.pressed.connect(lambda: self.preheatALFTemp(10))
+        if self.ALF10PreheatButton:
+            self.ALF10PreheatButton.pressed.connect(lambda: self.preheatALFTemp(50))
 
         # Chamber heater signal connections (optional - may not exist in all UI versions)
         if self.setChamberTempButton:
@@ -319,6 +333,8 @@ class ControlScreen(QWidget):
             self.bedTempSpinBox.setProperty("value", 0)
             if self.ringTempSpinBox:
                 self.ringTempSpinBox.setProperty("value", 0)
+            if self.ALFTempSpinBox:
+                self.ALFTempSpinBox.setProperty("value", 0)
             if self.chamberTempSpinBox:
                 self.chamberTempSpinBox.setProperty("value", 0)
             if self.spoolTempSpinBox:
@@ -401,7 +417,7 @@ class ControlScreen(QWidget):
 
     def setRingTemp(self):
         """
-        Sets the power level of the ring heater using M143 command
+        Sets the power level of the ring heater using M143 command (legacy)
         Ring heater uses PWM control (0-255), where 255 = 50% max power
         """
         logger.info("ControlScreen.setRingTemp started")
@@ -414,10 +430,33 @@ class ControlScreen(QWidget):
         except Exception as e:
             logger.error("Error in ControlScreen.setRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.setRingTemp: {}".format(e), overlay=True)
+    
+    def setALFTemp(self):
+        """
+        Sets the ALF ring heater power level using M143 command
+        Converts percentage (0-100%) to PWM value (0-255)
+        """
+        logger.info("ControlScreen.setALFTemp started")
+        try:
+            # Get percentage from spinbox (0-150%)
+            percentage = self.ALFTempSpinBox.value()
+            # Convert percentage to PWM value (0-255)
+            # 100% = 255, so multiply by 2.55
+            pwm_value = int(percentage * 2.55)
+            # Clamp to 0-255 range
+            pwm_value = max(0, min(255, pwm_value))
+            
+            self.octoprint_client.gcode(command=f'M143 S{pwm_value}')
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(pwm_value)
+            logger.info(f"ALF ring heater set to {percentage}% (PWM: {pwm_value})")
+        except Exception as e:
+            logger.error("Error in ControlScreen.setALFTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setALFTemp: {}".format(e), overlay=True)
 
     def preheatRingTemp(self, temp):
         """
-        Sets the ring heater to a preset power level using M143 command
+        Sets the ring heater to a preset power level using M143 command (legacy)
         param temp: power level (0-255) to set the ring heater to
         """
         logger.info("ControlScreen.preheatRingTemp started")
@@ -431,6 +470,28 @@ class ControlScreen(QWidget):
         except Exception as e:
             logger.error("Error in ControlScreen.preheatRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.preheatRingTemp: {}".format(e), overlay=True)
+    
+    def preheatALFTemp(self, percentage):
+        """
+        Sets the ALF ring heater to a preset power level using M143 command
+        param percentage: percentage (0-100) to set the ALF ring heater to
+        """
+        logger.info(f"ControlScreen.preheatALFTemp started with {percentage}%")
+        try:
+            # Convert percentage to PWM value (0-255)
+            pwm_value = int(percentage * 2.55)
+            # Clamp to 0-255 range
+            pwm_value = max(0, min(255, pwm_value))
+            
+            self.octoprint_client.gcode(command=f'M143 S{pwm_value}')
+            if self.ALFTempSpinBox:
+                self.ALFTempSpinBox.setProperty("value", percentage)
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(pwm_value)
+            logger.info(f"ALF ring heater preset to {percentage}% (PWM: {pwm_value})")
+        except Exception as e:
+            logger.error("Error in ControlScreen.preheatALFTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatALFTemp: {}".format(e), overlay=True)
 
     def setChamberTemp(self):
         """
