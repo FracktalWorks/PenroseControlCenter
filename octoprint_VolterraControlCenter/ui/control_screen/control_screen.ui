@@ -1936,7 +1936,7 @@ QPushButton:focus {
            <string/>
           </property>
           <property name="pixmap">
-           <pixmap resource="../resources/resource.qrc">:/Logos &amp; Branding/img/icons/heaterRing.png</pixmap>
+           <pixmap resource="../resources/resource.qrc">:/Icons/img/icons/heaterRing.png</pixmap>
           </property>
           <property name="scaledContents">
            <bool>true</bool>
