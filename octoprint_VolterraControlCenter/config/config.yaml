@@ -8,7 +8,7 @@ api:
   allowCrossOrigin: true
   key: B508534ED20348F090B4D0AD637D3660
 appearance:
-  name: Twin Dragon 600 x 600
+  name: Volterra-ALF
 feature:
   sdSupport: false
 plugins:

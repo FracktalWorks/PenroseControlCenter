@@ -139,6 +139,10 @@ class MainWindow(QMainWindow):
                     # Apply single/dual nozzle configuration
                     self._apply_nozzle_configuration()
                     
+                    # Connect to printer config updates to re-apply UI config when Klipper config is loaded
+                    if self.printer_model:
+                        self.printer_model.printer_config_updated.connect(self._on_printer_config_updated)
+                    
                 except Exception as e:
                     self.logger.exception("Error during MainWindow initialization")
                     WarningOk(self,
@@ -198,6 +202,12 @@ class MainWindow(QMainWindow):
     def _apply_nozzle_configuration(self):
         """Apply single/dual nozzle configuration by hiding appropriate UI elements."""
         apply_nozzle_config_to_all_screens(self)
+    
+    def _on_printer_config_updated(self, config_dict):
+        """Handle printer configuration updates from Klipper config loading."""
+        self.logger.info(f"Printer config updated, re-applying UI configuration. HAS_HEATER_RING={config_dict.get('HAS_HEATER_RING', False)}")
+        # Re-apply the nozzle/heater ring configuration since Klipper config may have changed
+        self._apply_nozzle_configuration()
     
     def _hide_dual_nozzle_elements(self):
         """Hide all UI elements related to the second nozzle/tool when in single nozzle mode."""

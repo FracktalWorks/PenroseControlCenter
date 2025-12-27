@@ -8,6 +8,7 @@ Also handles Volterra ALF specific UI elements like heater ring.
 
 import config
 from utils.logger import get_logger
+from PyQt5.QtWidgets import QWidget
 
 logger = get_logger(__name__)
 
@@ -19,12 +20,15 @@ def is_dual_nozzle_printer():
 def has_heater_ring():
     """Check if the printer has a heater ring (Volterra ALF specific)."""
     # Access the current value dynamically to pick up changes from Klipper config loading
-    return config.HAS_HEATER_RING
+    result = config.HAS_HEATER_RING
+    logger.debug(f"has_heater_ring() returning: {result}")
+    return result
 
 # UI elements that should be hidden for single nozzle printers
+# Note: Only include QWidget-based elements (not layouts like QHBoxLayout/QVBoxLayout)
 DUAL_NOZZLE_ELEMENTS = {
     'home_screen': [
-        'tool1Layout', 'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
+        'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
         'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature', 'tool1TextLabel', 'toolSeperationLine'
     ],
     'control_screen': [
@@ -43,10 +47,10 @@ DUAL_NOZZLE_ELEMENTS = {
 
 # UI elements that should only be shown for printers with heater ring (Volterra ALF)
 # Note: ALF ring heater shows power % only (via ALFLabel), not temperature
+# Only include QWidget-based elements (not layouts, which don't have show/hide methods)
 HEATER_RING_ELEMENTS = {
     'home_screen': [
-        'heaterRingLabel', 'ALFLabel', 'heaterRingSeparationLine',
-        'verticalLayout_13', 'label_15'  # ALF layout and text label
+        'heaterRingLabel', 'ALFLabel', 'heaterRingSeparationLine', 'label_15'
     ]
 }
 
@@ -109,21 +113,31 @@ def get_heater_ring_elements(screen_name):
 
 def hide_heater_ring_elements(widget, element_names):
     """
-    Hide heater ring UI elements if printer does not have a heater ring.
+    Show or hide heater ring UI elements based on printer configuration.
     
     Args:
         widget: The parent widget containing the elements
-        element_names: List of element names to hide for non-heater ring printers
+        element_names: List of element names to show/hide based on heater ring presence
     """
-    if not has_heater_ring():
-        for element_name in element_names:
-            element = getattr(widget, element_name, None)
-            if element:
-                try:
+    has_ring = has_heater_ring()
+    logger.info(f"hide_heater_ring_elements called: has_ring={has_ring}, elements={element_names}")
+    for element_name in element_names:
+        element = getattr(widget, element_name, None)
+        if element is None:
+            # Try findChild as fallback for elements not stored as attributes
+            element = widget.findChild(QWidget, element_name)
+        if element:
+            try:
+                if has_ring:
+                    element.show()
+                    logger.info(f"Shown heater ring element: {element_name}")
+                else:
                     element.hide()
-                    logger.debug(f"Hidden heater ring element: {element_name}")
-                except Exception as e:
-                    logger.error(f"Error hiding element {element_name}: {e}")
+                    logger.info(f"Hidden heater ring element: {element_name}")
+            except Exception as e:
+                logger.error(f"Error showing/hiding element {element_name}: {e}")
+        else:
+            logger.warning(f"Heater ring element not found: {element_name}")
 
 def apply_nozzle_config_to_screen(widget, screen_name):
     """
@@ -156,16 +170,16 @@ def apply_nozzle_config_to_all_screens(main_window):
     else:
         logger.info("Dual nozzle configuration active - all elements visible")
     
-    # Apply heater ring visibility
-    if not has_heater_ring():
-        try:
-            for screen_name, elements in HEATER_RING_ELEMENTS.items():
-                if hasattr(main_window, screen_name):
-                    screen = getattr(main_window, screen_name)
-                    hide_heater_ring_elements(screen, elements)
-                    
+    # Apply heater ring visibility (show if has_heater_ring, hide otherwise)
+    try:
+        for screen_name, elements in HEATER_RING_ELEMENTS.items():
+            if hasattr(main_window, screen_name):
+                screen = getattr(main_window, screen_name)
+                hide_heater_ring_elements(screen, elements)
+                
+        if has_heater_ring():
+            logger.info("Heater ring configuration active - heater ring elements shown")
+        else:
             logger.info("Hidden heater ring elements - printer does not have heater ring")
-        except Exception as e:
-            logger.error(f"Error hiding heater ring elements: {e}")
-    else:
-        logger.info("Heater ring configuration active - heater ring elements visible")
+    except Exception as e:
+        logger.error(f"Error applying heater ring configuration: {e}")

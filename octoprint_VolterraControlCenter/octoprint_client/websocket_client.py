@@ -656,7 +656,6 @@ class OctoPrintWebSocket(QThread):
                                 elif 'Ring heater set to' in item:
                                     try:
                                         # Parse "Ring heater set to XX.X% (YYY/255, max ZZ%)"
-                                        import re
                                         match = re.search(r'\((\d+)/255', item)
                                         if match:
                                             power_level = int(match.group(1))
