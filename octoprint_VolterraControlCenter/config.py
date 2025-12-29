@@ -30,6 +30,7 @@ SCREEN_HEIGHT = 600
 file_name = ''
 
 filaments = [
+    ("PEEK", 400),
     ("PLA", 190),
     ("ABS", 220),
     ("PETG", 220),

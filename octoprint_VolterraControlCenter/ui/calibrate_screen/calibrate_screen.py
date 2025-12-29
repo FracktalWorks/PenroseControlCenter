@@ -64,6 +64,10 @@ class CalibrateScreen(QWidget):
         # Connect buttons to their respective methods
         self.calibrationWizardButton.clicked.connect(lambda: self.show_calibrate_screen("bed_leveling"))
         self.inputShaperCalibrateButton.clicked.connect(self.inputShaperCalibrate)
+
+        # Temporarily disable input shaper button - TODO: Re-enable when ready
+        self.inputShaperCalibrateButton.setEnabled(False)
+        
         self.cameraToolOffsetCalibrateButton.clicked.connect(lambda: self.show_calibrate_screen("camera_tool_offset"))
         self.nozzleOffsetButton.clicked.connect(lambda: self.show_calibrate_screen("nozzle_offset"))
         self.toolOffsetZButton.clicked.connect(lambda: self.show_calibrate_screen("tool_offset", tab="Z"))
@@ -197,9 +201,10 @@ class CalibrateScreen(QWidget):
             
             # List all calibration buttons that should be disabled when Klipper is not ready
             # Keep the back button always enabled
+            # inputShaperCalibrateButton excluded - permanently disabled for now
             calibration_buttons = [
                 self.calibrationWizardButton,
-                self.inputShaperCalibrateButton, 
+                # self.inputShaperCalibrateButton,  # Temporarily disabled
                 self.cameraToolOffsetCalibrateButton,
                 self.nozzleOffsetButton,
                 self.toolOffsetZButton,
