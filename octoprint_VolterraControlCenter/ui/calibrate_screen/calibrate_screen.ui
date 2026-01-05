@@ -399,7 +399,7 @@ Wizard</string>
               </property>
               <property name="icon">
                <iconset resource="../resources/resource.qrc">
-                <normaloff>:/Logos &amp; Branding/img/icons/Input Shaper.png</normaloff>:/Logos &amp; Branding/img/icons/Input Shaper.png</iconset>
+                <normaloff>:/Icons/img/icons/Input Shaper.png</normaloff>:/Icons/img/icons/Input Shaper.png</iconset>
               </property>
               <property name="iconSize">
                <size>
