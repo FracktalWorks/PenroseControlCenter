@@ -277,6 +277,44 @@ class ControlScreen(QWidget):
         # Apply nozzle configuration
         self.apply_nozzle_configuration()
 
+    def showEvent(self, event):
+        """Update spinbox values when the control screen is shown."""
+        super().showEvent(event)
+        self._update_spinboxes_from_home_screen()
+
+    def _update_spinboxes_from_home_screen(self):
+        """Update all temperature spinboxes with current target values from home screen."""
+        try:
+            home_screen = self.main_window.home_screen
+            
+            # Update tool temperature spinbox (based on current toggle state)
+            if self.toolToggleTemperatureButton.isChecked():
+                temp_text = home_screen.tool1TargetTemperature.text().replace("°C", "").strip()
+            else:
+                temp_text = home_screen.tool0TargetTemperature.text().replace("°C", "").strip()
+            if temp_text and temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                self.toolTempSpinBox.setProperty("value", float(temp_text))
+            
+            # Update bed temperature spinbox
+            bed_temp_text = home_screen.bedTargetTemperature.text().replace("°C", "").strip()
+            if bed_temp_text and bed_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                self.bedTempSpinBox.setProperty("value", float(bed_temp_text))
+            
+            # Update chamber temperature spinbox
+            if self.chamberTempSpinBox and hasattr(home_screen, 'chamberTargetTemperature'):
+                chamber_temp_text = home_screen.chamberTargetTemperature.text().replace("°C", "").strip()
+                if chamber_temp_text and chamber_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    self.chamberTempSpinBox.setProperty("value", float(chamber_temp_text))
+            
+            # Update spool/filament temperature spinbox
+            if self.spoolTempSpinBox and hasattr(home_screen, 'spoolTargetTemperature'):
+                spool_temp_text = home_screen.spoolTargetTemperature.text().replace("°C", "").strip()
+                if spool_temp_text and spool_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    self.spoolTempSpinBox.setProperty("value", float(spool_temp_text))
+                    
+        except Exception as e:
+            self.logger.debug(f"Could not update spinboxes from home screen: {e}")
+
     def apply_nozzle_configuration(self):
         """Hide dual nozzle elements and apply styling for single nozzle configuration."""
         apply_nozzle_config_to_screen(self, 'control_screen')
