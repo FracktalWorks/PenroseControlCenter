@@ -419,14 +419,21 @@ class ControlScreen(QWidget):
         """
         Sets the power level of the ring heater using M143 command (legacy)
         Ring heater uses PWM control (0-255), where 255 = 50% max power
+        Converts percentage (0-100%) from UI spinbox to PWM value (0-255)
         """
         logger.info("ControlScreen.setRingTemp started")
         try:
-            # M143 controls ring heater PWM (0-255, limited to 50% max power)
-            temp = self.ringTempSpinBox.value()
-            self.octoprint_client.gcode(command=f'M143 S{temp}')
-            # Update printer model to propagate to home screen
-            self.main_window.printer_model.update_ring_heater_power(temp)
+            # Get percentage from spinbox (0-100%)
+            percentage = self.ringTempSpinBox.value()
+            # Convert percentage to PWM value (0-255)
+            # 100% = 255, so multiply by 2.55
+            pwm_value = int(percentage * 2.55)
+            # Clamp to 0-255 range
+            pwm_value = max(0, min(255, pwm_value))
+            
+            self.octoprint_client.gcode(command=f'M143 S{pwm_value}')
+            # Update printer model to propagate to home screen (store percentage)
+            self.main_window.printer_model.update_ring_heater_power(percentage)
         except Exception as e:
             logger.error("Error in ControlScreen.setRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.setRingTemp: {}".format(e), overlay=True)
