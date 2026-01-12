@@ -137,6 +137,7 @@ class MainController(QtCore.QObject):
 
     # Define signals
     klipper_error_signal = QtCore.pyqtSignal(str)  # Signal to show error dialog from main thread
+    klipper_restart_complete_signal = QtCore.pyqtSignal(bool, str)  # Signal emitted when Klipper restart completes (success, message)
 
     # =========================================================================
     # SECTION: Initialization / Startup Lifecycle
@@ -154,6 +155,12 @@ class MainController(QtCore.QObject):
         self.main_window = MainWindow(controller=self, printer_model=self.printer_model)
         self.klipper_status_refresh_running = False  # Track if STATUS refresh is already running
         self.startup_time = time.time()  # Track when the controller was initialized
+        
+        # Klipper restart grace period - suppresses transient MCU errors during intentional restarts
+        self._klipper_restart_in_progress = False
+        self._klipper_restart_grace_timer = QtCore.QTimer(self)
+        self._klipper_restart_grace_timer.setSingleShot(True)
+        self._klipper_restart_grace_timer.timeout.connect(self._end_klipper_restart_grace_period)
         
         # Connect signal to slot for showing Klipper error dialog in main thread
         self.klipper_error_signal.connect(self.showKlipperErrorDialog)
@@ -431,6 +438,128 @@ class MainController(QtCore.QObject):
             self.logger.error(f"Error during printer restart: {e}")
             dialog.WarningOk(self.main_window, f"Error during restart: {e}", overlay=True)
             return False
+
+    # =========================================================================
+    # SECTION: Klipper Restart Utilities
+    # =========================================================================
+
+    def _end_klipper_restart_grace_period(self):
+        """End the Klipper restart grace period (called by timer)."""
+        self._klipper_restart_in_progress = False
+        self.logger.debug("Klipper restart grace period ended")
+
+    def restart_klipper_and_wait(self, on_complete=None, timeout_seconds=30, use_firmware_restart=False):
+        """
+        Restart Klipper and wait for it to become ready before calling the completion callback.
+        
+        This method provides a reusable way to restart Klipper after saving settings,
+        suppressing transient MCU reset errors during the restart process.
+        
+        Args:
+            on_complete: Optional callback function to call when restart completes.
+                        Called with (success: bool, message: str) arguments.
+                        If None, the klipper_restart_complete_signal is emitted instead.
+            timeout_seconds: Maximum time to wait for Klipper to become ready (default: 30).
+            use_firmware_restart: If True, use FIRMWARE_RESTART instead of RESTART (default: False).
+        
+        Usage:
+            # With callback:
+            self.main_window.controller.restart_klipper_and_wait(
+                on_complete=lambda success, msg: self.on_restart_done(success, msg)
+            )
+            
+            # With signal:
+            self.main_window.controller.klipper_restart_complete_signal.connect(self.on_restart_done)
+            self.main_window.controller.restart_klipper_and_wait()
+        """
+        try:
+            self.logger.info(f"Starting Klipper restart (firmware_restart={use_firmware_restart}, timeout={timeout_seconds}s)")
+            
+            # Enable grace period to suppress transient MCU errors
+            self._klipper_restart_in_progress = True
+            # Set a grace period timer that extends beyond the expected restart time
+            grace_period_ms = (timeout_seconds + 10) * 1000
+            self._klipper_restart_grace_timer.start(grace_period_ms)
+            
+            # Send restart command
+            restart_command = 'FIRMWARE_RESTART' if use_firmware_restart else 'RESTART'
+            self.octoprint_client.gcode(command=restart_command)
+            self.logger.info(f"Sent {restart_command} command")
+            
+            # Start async wait for Klipper ready
+            self._wait_for_klipper_ready_async(on_complete, timeout_seconds)
+            
+        except Exception as e:
+            self.logger.error(f"Error initiating Klipper restart: {e}")
+            self._klipper_restart_in_progress = False
+            self._klipper_restart_grace_timer.stop()
+            error_msg = f"Failed to restart Klipper: {e}"
+            if on_complete:
+                on_complete(False, error_msg)
+            else:
+                self.klipper_restart_complete_signal.emit(False, error_msg)
+
+    @run_async
+    def _wait_for_klipper_ready_async(self, on_complete, timeout_seconds):
+        """
+        Background thread that waits for Klipper to become ready after restart.
+        
+        Args:
+            on_complete: Callback function or None to use signal instead.
+            timeout_seconds: Maximum wait time.
+        """
+        deadline = time.time() + timeout_seconds
+        ready = False
+        final_state = 'unknown'
+        
+        self.logger.info(f"Waiting up to {timeout_seconds}s for Klipper to become ready...")
+        
+        # Wait for Klipper state to become 'ready'
+        while time.time() < deadline:
+            try:
+                current_state = getattr(self.printer_model, 'klipper_state', 'unknown')
+                final_state = current_state
+                
+                if current_state.lower() == 'ready':
+                    ready = True
+                    self.logger.info(f"Klipper is ready (took ~{timeout_seconds - (deadline - time.time()):.1f}s)")
+                    break
+                    
+                self.logger.debug(f"Klipper state: {current_state}, waiting...")
+                
+            except Exception as e:
+                self.logger.debug(f"Error checking Klipper state: {e}")
+            
+            time.sleep(1)
+        
+        # End grace period
+        self._klipper_restart_in_progress = False
+        self._klipper_restart_grace_timer.stop()
+        
+        # Prepare result
+        if ready:
+            success = True
+            message = "Klipper restart completed successfully"
+        else:
+            success = False
+            message = f"Klipper restart timed out (state: {final_state})"
+            self.logger.warning(message)
+        
+        # Notify completion on main thread
+        # Use default arguments in lambda to properly capture current values
+        if on_complete:
+            QtCore.QTimer.singleShot(0, lambda s=success, m=message: on_complete(s, m))
+        else:
+            QtCore.QTimer.singleShot(0, lambda s=success, m=message: self.klipper_restart_complete_signal.emit(s, m))
+
+    def is_klipper_restart_in_progress(self):
+        """
+        Check if a Klipper restart is currently in progress.
+        
+        Returns:
+            bool: True if restart is in progress (grace period active), False otherwise.
+        """
+        return self._klipper_restart_in_progress
 
     # =========================================================================
     # SECTION: Print Restore Management
@@ -955,6 +1084,12 @@ class MainController(QtCore.QObject):
             cleaned_msg = cleaned_msg[1:].lstrip()
         self.logger.error(f"Printer error received: {msg}")
         self.logger.debug(f"Cleaned message for processing: {cleaned_msg}")
+        
+        # Suppress transient MCU reset errors during intentional Klipper restarts
+        if self._klipper_restart_in_progress:
+            if "Failed automated reset of MCU" in cleaned_msg or "MCU" in cleaned_msg:
+                self.logger.debug(f"Suppressing transient MCU error during Klipper restart: {cleaned_msg}")
+                return
         
         # Check if this is a "Printer is not ready" error and printer is in expected states
         if "Printer is not ready" in cleaned_msg:
