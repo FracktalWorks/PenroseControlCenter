@@ -68,11 +68,11 @@ BACKUP_CFG_PATTERN = '/home/pi/printer-*.cfg'
 # Fallback values when configuration cannot be read
 FALLBACK_CONFIG = {
     'name': 'Unknown Printer',
-    'extruder_count': 1,
+    'extruder_count': 2,
     'bed_width': 200,
     'bed_depth': 200,
     'bed_height': 200,
-    'is_dual': False
+    'is_dual': True
 }
 
 
@@ -292,8 +292,8 @@ class PrinterConfigManager:
             'bed_width': variables.get('bed_x_max', FALLBACK_CONFIG['bed_width']) - variables.get('bed_x_min', 0),
             'bed_depth': variables.get('bed_y_max', FALLBACK_CONFIG['bed_depth']) - variables.get('bed_y_min', 0),
             'bed_height': variables.get('bed_z_max', FALLBACK_CONFIG['bed_height']) - variables.get('bed_z_min', 0),
-            'is_dual': bool(variables.get('is_dual_nozzle', 0)),
-            'extruder_count': 2 if bool(variables.get('is_dual_nozzle', 0)) else 1,
+            'is_dual': bool(variables.get('is_dual_nozzle', 1)),
+            'extruder_count': 2 if bool(variables.get('is_dual_nozzle', 1)) else 1,
             # Store raw variables for further use
             'variables': variables
         }
@@ -320,7 +320,7 @@ class PrinterConfigManager:
                 'z_min': variables.get('bed_z_min', 0),
                 'z_max': variables.get('bed_z_max', 200),
             },
-            'is_dual_nozzle': bool(variables.get('is_dual_nozzle', 0)),
+            'is_dual_nozzle': bool(variables.get('is_dual_nozzle', 1)),
             'has_heater_ring': bool(variables.get('has_heater_ring', 0)),
             'has_chamber_cooling': 'fan1' in variables,
             
@@ -355,7 +355,7 @@ class PrinterConfigManager:
             
             # Other settings
             'ptfeTubeLength': variables.get('ptfe_tube_length', 1500),
-            'IS_DUAL_NOZZLE': bool(variables.get('is_dual_nozzle', 0)),
+            'IS_DUAL_NOZZLE': bool(variables.get('is_dual_nozzle', 1)),
             'HAS_HEATER_RING': bool(variables.get('has_heater_ring', 0)),
         }
         
