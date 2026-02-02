@@ -41,7 +41,8 @@ del get_versions
 # 			self.is_running = False
 
 
-class PenroseControlCenter(octoprint.plugin.StartupPlugin):
+class PenroseControlCenter(octoprint.plugin.StartupPlugin,
+                           octoprint.plugin.SoftwareUpdatePlugin):
     def on_after_startup(self):
         # self.resetInetrval = int(self._settings.get(["resetInetrval"]))
         self._logger.info("Penrose TouchUI Plugin Started")
