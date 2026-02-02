@@ -67,29 +67,26 @@ class HomeScreen(QWidget):
         self.tool1TempBar = self.findChild(QProgressBar, "tool1TempBar")
         self.tool1Label = self.findChild(QLabel, "tool1Label")
 
-        # Temperature displays - Heater Ring (Volterra ALF specific)
-        # Note: ALF ring heater uses power % display only (not temperature)
-        self.heaterRingLabel = self.findChild(QLabel, "heaterRingLabel")
-        self.heaterRingSeparationLine = self.findChild(QFrame, "heaterRingSeparationLine")
-
         # Temperature displays - Bed
         self.bedTargetTemperature = self.findChild(QLabel, "bedTargetTemperature")
         self.bedActualTemperature = self.findChild(QLabel, "bedActualTemperature")
         self.bedTempBar = self.findChild(QProgressBar, "bedTempBar")
 
-        # Temperature displays - Chamber
-        self.chamberTargetTemperature = self.findChild(QLabel, "chamberTargetTemperature")
-        self.chamberActualTemperature = self.findChild(QLabel, "chamberActualTemperature")
-        self.chamberTempBar = self.findChild(QProgressBar, "chamberTempBar")
-        self.chamberLabel = self.findChild(QLabel, "chamberLabel")
-        self.chamberTextLabel = self.findChild(QLabel, "chamberTextLabel")
+        # Temperature displays - Secondary Heater H0 (Penrose)
+        # Positioned next to Tool 0 in the UI
+        self.H0TargetTemperature = self.findChild(QLabel, "H0TargetTemperature")
+        self.H0ActualTemperature = self.findChild(QLabel, "H0ActualTemperature")
+        self.H0TempBar = self.findChild(QProgressBar, "H0TempBar")
+        self.H0Label = self.findChild(QLabel, "H0Label")
+        self.H0TextLabel = self.findChild(QLabel, "H0TextLabel")
 
-        # Temperature displays - Spool/Filament
-        self.spoolTargetTemperature = self.findChild(QLabel, "spoolTargetTemperature")
-        self.spoolActualTemperature = self.findChild(QLabel, "spoolActualTemperature")
-        self.spoolTempBar = self.findChild(QProgressBar, "spoolTempBar")
-        self.spoolLabel = self.findChild(QLabel, "spoolLabel")
-        self.spoolTextLabel = self.findChild(QLabel, "spoolTextLabel")
+        # Temperature displays - Secondary Heater H1 (Penrose)
+        # Positioned next to Tool 1 in the UI
+        self.H1TargetTemperature = self.findChild(QLabel, "H1TargetTemperature")
+        self.H1ActualTemperature = self.findChild(QLabel, "H1ActualTemperature")
+        self.H1TempBar = self.findChild(QProgressBar, "H1TempBar")
+        self.H1Label = self.findChild(QLabel, "H1Label")
+        self.H1TextLabel = self.findChild(QLabel, "H1TextLabel")
 
         # Status components
         self.printerStatus = self.findChild(QLabel, "printerStatus")
@@ -106,9 +103,6 @@ class HomeScreen(QWidget):
         # Feed rate and flow rate labels
         self.feedRateLabel = self.findChild(QLabel, "feedRateLabel")
         self.flowRateLabel = self.findChild(QLabel, "flowRateLabel")
-        
-        # Ring heater power label (ALF)
-        self.ALFLabel = self.findChild(QLabel, "ALFLabel")
 
         # Validate UI components
         all_components = [
@@ -116,6 +110,8 @@ class HomeScreen(QWidget):
             self.tool0TargetTemperature, self.tool0ActualTemperature, self.tool0TempBar, self.tool0Label,
             self.tool1TargetTemperature, self.tool1ActualTemperature, self.tool1TempBar, self.tool1Label,
             self.bedTargetTemperature, self.bedActualTemperature, self.bedTempBar,
+            self.H0TargetTemperature, self.H0ActualTemperature, self.H0TempBar,
+            self.H1TargetTemperature, self.H1ActualTemperature, self.H1TempBar,
             self.printerStatus, self.printerStatusColour, self.ipStatus,
             self.fileName, self.printTime, self.timeLeft, self.printProgressBar, self.printPreviewMain,
             self.feedRateLabel, self.flowRateLabel
@@ -131,8 +127,6 @@ class HomeScreen(QWidget):
         # Connect feed rate and flow rate signals
         self.main_window.printer_model.feed_rate_updated.connect(self.updateFeedRate)
         self.main_window.printer_model.flow_rate_updated.connect(self.updateFlowRate)
-        # Connect ring heater power signal
-        self.main_window.printer_model.ring_heater_power_updated.connect(self.updateRingPower)
         # New: reflect loaded filament/nozzle
         try:
             self.main_window.printer_model.tool_bay_states_loaded.connect(self.on_tool_states_loaded)
@@ -160,6 +154,21 @@ class HomeScreen(QWidget):
         self.bedActualTemperature.setText("0°C")
         self.bedTargetTemperature.setText("0°C")
         self.bedTempBar.setValue(0)
+        
+        # Initialize secondary heaters H0 and H1
+        if self.H0ActualTemperature:
+            self.H0ActualTemperature.setText("0°C")
+        if self.H0TargetTemperature:
+            self.H0TargetTemperature.setText("0°C")
+        if self.H0TempBar:
+            self.H0TempBar.setValue(0)
+        
+        if self.H1ActualTemperature:
+            self.H1ActualTemperature.setText("0°C")
+        if self.H1TargetTemperature:
+            self.H1TargetTemperature.setText("0°C")
+        if self.H1TempBar:
+            self.H1TempBar.setValue(0)
 
         # Update print info
         self.fileName.setText(self.current_file)
@@ -170,10 +179,6 @@ class HomeScreen(QWidget):
         # Initialize feed rate and flow rate labels
         self.feedRateLabel.setText("100%")
         self.flowRateLabel.setText("100%")
-        
-        # Initialize ring power label (ALF)
-        if self.ALFLabel:
-            self.ALFLabel.setText("0%")
         
         # Set initial values from printer model if available
         try:
@@ -358,14 +363,15 @@ class HomeScreen(QWidget):
                 temperature['bedActual'] = 0
             if temperature['bedTarget'] is None:
                 temperature['bedTarget'] = 0
-            if temperature.get('chamberActual') is None:
-                temperature['chamberActual'] = 0
-            if temperature.get('chamberTarget') is None:
-                temperature['chamberTarget'] = 0
-            if temperature.get('filamentActual') is None:
-                temperature['filamentActual'] = 0
-            if temperature.get('filamentTarget') is None:
-                temperature['filamentTarget'] = 0
+            # Secondary heaters H0 and H1 (Penrose)
+            if temperature.get('H0Actual') is None:
+                temperature['H0Actual'] = 0
+            if temperature.get('H0Target') is None:
+                temperature['H0Target'] = 0
+            if temperature.get('H1Actual') is None:
+                temperature['H1Actual'] = 0
+            if temperature.get('H1Target') is None:
+                temperature['H1Target'] = 0
 
             # Update extruder 0 temperature
             if temperature['tool0Target'] == 0:
@@ -406,39 +412,43 @@ class HomeScreen(QWidget):
             self.bedActualTemperature.setText(str(int(temperature['bedActual'])) + "°C")
             self.bedTargetTemperature.setText(str(int(temperature['bedTarget'])) + "°C")
 
-            # Note: ALF ring heater power % is updated via updateRingPower() from ring_heater_power_updated signal
-
-            # Update chamber temperature
-            chamber_actual = temperature.get('chamberActual', 0) or 0
-            chamber_target = temperature.get('chamberTarget', 0) or 0
+            # Update secondary heater H0 temperature (positioned next to T0)
+            H0_actual = temperature.get('H0Actual', 0) or 0
+            H0_target = temperature.get('H0Target', 0) or 0
             
-            if chamber_target == 0:
-                self.chamberTempBar.setMaximum(100)
-                self.chamberTempBar.setStyleSheet(styles.bar_heater_cold)
-            elif chamber_actual <= chamber_target:
-                self.chamberTempBar.setMaximum(chamber_target)
-                self.chamberTempBar.setStyleSheet(styles.bar_heater_heating)
-            else:
-                self.chamberTempBar.setMaximum(chamber_actual)
-            self.chamberTempBar.setValue(int(chamber_actual))
-            self.chamberActualTemperature.setText(str(int(chamber_actual)) + "°C")
-            self.chamberTargetTemperature.setText(str(int(chamber_target)) + "°C")
+            if self.H0TempBar:
+                if H0_target == 0:
+                    self.H0TempBar.setMaximum(300)
+                    self.H0TempBar.setStyleSheet(styles.bar_heater_cold)
+                elif H0_actual <= H0_target:
+                    self.H0TempBar.setMaximum(int(H0_target))
+                    self.H0TempBar.setStyleSheet(styles.bar_heater_heating)
+                else:
+                    self.H0TempBar.setMaximum(int(H0_actual))
+                self.H0TempBar.setValue(int(H0_actual))
+            if self.H0ActualTemperature:
+                self.H0ActualTemperature.setText(str(int(H0_actual)) + "°C")
+            if self.H0TargetTemperature:
+                self.H0TargetTemperature.setText(str(int(H0_target)) + "°C")
 
-            # Update filament/spool temperature
-            filament_actual = temperature.get('filamentActual', 0) or 0
-            filament_target = temperature.get('filamentTarget', 0) or 0
+            # Update secondary heater H1 temperature (positioned next to T1)
+            H1_actual = temperature.get('H1Actual', 0) or 0
+            H1_target = temperature.get('H1Target', 0) or 0
             
-            if filament_target == 0:
-                self.spoolTempBar.setMaximum(100)
-                self.spoolTempBar.setStyleSheet(styles.bar_heater_cold)
-            elif filament_actual <= filament_target:
-                self.spoolTempBar.setMaximum(filament_target)
-                self.spoolTempBar.setStyleSheet(styles.bar_heater_heating)
-            else:
-                self.spoolTempBar.setMaximum(filament_actual)
-            self.spoolTempBar.setValue(int(filament_actual))
-            self.spoolActualTemperature.setText(str(int(filament_actual)) + "°C")
-            self.spoolTargetTemperature.setText(str(int(filament_target)) + "°C")
+            if self.H1TempBar:
+                if H1_target == 0:
+                    self.H1TempBar.setMaximum(300)
+                    self.H1TempBar.setStyleSheet(styles.bar_heater_cold)
+                elif H1_actual <= H1_target:
+                    self.H1TempBar.setMaximum(int(H1_target))
+                    self.H1TempBar.setStyleSheet(styles.bar_heater_heating)
+                else:
+                    self.H1TempBar.setMaximum(int(H1_actual))
+                self.H1TempBar.setValue(int(H1_actual))
+            if self.H1ActualTemperature:
+                self.H1ActualTemperature.setText(str(int(H1_actual)) + "°C")
+            if self.H1TargetTemperature:
+                self.H1TargetTemperature.setText(str(int(H1_target)) + "°C")
 
         except (KeyError, TypeError, ValueError) as e:
             self.logger.warning(f"Error updating temperature display: {e}")
@@ -587,16 +597,6 @@ class HomeScreen(QWidget):
             self.flowRateLabel.setText(f"{rate}%")
         except Exception as e:
             self.logger.error(f"Error updating flow rate label: {e}")
-    
-    def updateRingPower(self, power):
-        """Update the ring heater power label (ALF) when power changes."""
-        try:
-            if self.ALFLabel:
-                # Convert 0-255 to percentage
-                percentage = int((power / 255.0) * 100)
-                self.ALFLabel.setText(f"{percentage}%")
-        except Exception as e:
-            self.logger.error(f"Error updating ring power label: {e}")
 
     # --- New slots for tool state reflection on HomeScreen ---
     def on_tool_states_loaded(self, states: dict):

@@ -1872,23 +1872,23 @@ QPushButton:focus {
       </item>
      </layout>
     </widget>
-    <widget class="QWidget" name="horizontalLayoutWidget_H0">
+    <widget class="QWidget" name="horizontalLayoutWidget_5">
      <property name="geometry">
       <rect>
-       <x>200</x>
+       <x>10</x>
        <y>300</y>
        <width>301</width>
        <height>161</height>
       </rect>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_H0" stretch="1,3">
+     <layout class="QHBoxLayout" name="horizontalLayout_12" stretch="1,3">
       <item>
-       <layout class="QVBoxLayout" name="verticalLayout_H0">
+       <layout class="QVBoxLayout" name="verticalLayout_6">
         <property name="spacing">
          <number>0</number>
         </property>
         <item alignment="Qt::AlignHCenter">
-         <widget class="QLabel" name="H0Label">
+         <widget class="QLabel" name="ALFLabel">
           <property name="font">
            <font>
             <family>Gotham Light</family>
@@ -1901,12 +1901,12 @@ QPushButton:focus {
            <string notr="true">color: rgb(255, 255, 255);</string>
           </property>
           <property name="text">
-           <string>H0</string>
+           <string>ALF</string>
           </property>
          </widget>
         </item>
         <item alignment="Qt::AlignHCenter">
-         <widget class="QLabel" name="H0IconLabel">
+         <widget class="QLabel" name="ALFLabel_1">
           <property name="minimumSize">
            <size>
             <width>20</width>
@@ -1936,7 +1936,7 @@ QPushButton:focus {
            <string/>
           </property>
           <property name="pixmap">
-           <pixmap resource="../resources/resource.qrc">:/Icons/img/icons/Inlet.png</pixmap>
+           <pixmap resource="../resources/resource.qrc">:/Icons/img/icons/heaterRing.png</pixmap>
           </property>
           <property name="scaledContents">
            <bool>true</bool>
@@ -1944,7 +1944,385 @@ QPushButton:focus {
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="H050PreheatButton">
+         <widget class="QPushButton" name="ALF50PreheatButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <family>Gotham</family>
+            <pointsize>15</pointsize>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QPushButton {
+     border: 1px solid rgb(87, 87, 87);
+
+	background-color: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255));
+	border-top-right-radius: 15px;
+border-top-left-radius: 15px;
+
+}
+
+QPushButton:pressed {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #dadbde, stop: 1 #f6f7fa);
+}
+
+QPushButton:flat {
+    border: none; /* no border for a flat push button */
+}
+
+QPushButton:default {
+    border-color: navy; /* make the default button prominent */
+}
+
+QPushButton:focus {
+	outline: none;
+}</string>
+          </property>
+          <property name="text">
+           <string>10%</string>
+          </property>
+          <property name="iconSize">
+           <size>
+            <width>50</width>
+            <height>50</height>
+           </size>
+          </property>
+          <property name="checkable">
+           <bool>false</bool>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+          <property name="default">
+           <bool>false</bool>
+          </property>
+          <property name="flat">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="ALF10PreheatButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <family>Gotham</family>
+            <pointsize>15</pointsize>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QPushButton {
+     border: 1px solid rgb(87, 87, 87);
+
+	background-color: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255));
+	border-bottom-right-radius: 15px;
+border-bottom-left-radius: 15px;
+}
+
+QPushButton:pressed {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #dadbde, stop: 1 #f6f7fa);
+}
+
+QPushButton:flat {
+    border: none; /* no border for a flat push button */
+}
+
+QPushButton:default {
+    border-color: navy; /* make the default button prominent */
+}
+
+QPushButton:focus {
+	outline: none;
+}</string>
+          </property>
+          <property name="text">
+           <string>50%</string>
+          </property>
+          <property name="iconSize">
+           <size>
+            <width>50</width>
+            <height>50</height>
+           </size>
+          </property>
+          <property name="checkable">
+           <bool>false</bool>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+          <property name="default">
+           <bool>false</bool>
+          </property>
+          <property name="flat">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_13" stretch="3,2">
+        <property name="spacing">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QSpinBox" name="ALFTempSpinBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="font">
+           <font>
+            <family>Gotham</family>
+            <pointsize>16</pointsize>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QSpinBox {
+border-bottom-left-radius: 15px;
+border-top-left-radius: 15px;
+qproperty-alignment: 'AlignVCenter | AlignHCenter';
+border: 1px solid rgb(87, 87, 87);
+	background-color: rgb(255, 255, 255);
+}
+
+QSpinBox ::text {
+	background-color: rgb(255, 146, 57);
+}
+
+QSpinBox ::text:selected {
+	background-color: rgb(255, 146, 57);
+   
+}
+QSpinBox::up-button {
+     border-left: 1px solid rgb(87, 87, 87);
+border-bottom: 1px solid rgb(87, 87, 87);
+
+    min-width: 60px;   /* sets minimal button width */
+	background-color: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255));
+}
+
+QSpinBox::up-arrow { image: url(:/Navigation/img/Navigation/arrows.png);
+    width: 25px;
+     height: 25px;
+padding: 5px; 
+}
+
+
+
+QSpinBox::up-button:pressed {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #dadbde, stop: 1 #f6f7fa);
+}
+
+
+QSpinBox::down-button {
+     border-left: 1px solid rgb(87, 87, 87);
+border-top: 1px solid rgb(87, 87, 87);
+    min-width: 60px;   /* sets minimal button width */
+	background-color: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255));
+margin-top: -2px;
+
+}
+
+QSpinBox::down-arrow {image: url(:/Navigation/img/Navigation/arrows-5.png);
+    width: 25px;
+     height: 25px;
+padding: 5px;
+}
+
+QSpinBox::down-button:pressed {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #dadbde, stop: 1 #f6f7fa);
+
+}
+
+</string>
+          </property>
+          <property name="frame">
+           <bool>false</bool>
+          </property>
+          <property name="readOnly">
+           <bool>false</bool>
+          </property>
+          <property name="buttonSymbols">
+           <enum>QAbstractSpinBox::UpDownArrows</enum>
+          </property>
+          <property name="accelerated">
+           <bool>true</bool>
+          </property>
+          <property name="suffix">
+           <string>%</string>
+          </property>
+          <property name="maximum">
+           <number>100</number>
+          </property>
+          <property name="singleStep">
+           <number>1</number>
+          </property>
+          <property name="value">
+           <number>0</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="setALFTempButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="font">
+           <font>
+            <family>Gotham</family>
+            <pointsize>13</pointsize>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QPushButton {
+     border: 1px solid rgb(87, 87, 87);
+	background-color: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0.188, stop:0 rgba(180, 180, 180, 255), stop:1 rgba(255, 255, 255, 255));
+border-top-right-radius: 15px;
+border-bottom-right-radius: 15px;
+
+}
+
+QPushButton:pressed {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #dadbde, stop: 1 #f6f7fa);
+}
+
+QPushButton:flat {
+    border: none; /* no border for a flat push button */
+}
+
+QPushButton:default {
+    border-color: navy; /* make the default button prominent */
+}
+
+QPushButton:focus {
+	outline: none;
+}</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="icon">
+           <iconset resource="../resources/resource.qrc">
+            <normaloff>:/Icons/img/icons/verification-mark.png</normaloff>:/Icons/img/icons/verification-mark.png</iconset>
+          </property>
+          <property name="iconSize">
+           <size>
+            <width>30</width>
+            <height>30</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+    <widget class="QWidget" name="horizontalLayoutWidget_6">
+     <property name="geometry">
+      <rect>
+       <x>350</x>
+       <y>300</y>
+       <width>301</width>
+       <height>161</height>
+      </rect>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_14" stretch="1,3">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_8">
+        <property name="spacing">
+         <number>0</number>
+        </property>
+        <item alignment="Qt::AlignHCenter">
+         <widget class="QLabel" name="bedLabel_5">
+          <property name="font">
+           <font>
+            <family>Gotham Light</family>
+            <pointsize>14</pointsize>
+            <weight>50</weight>
+            <bold>false</bold>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">color: rgb(255, 255, 255);</string>
+          </property>
+          <property name="text">
+           <string>Chamber</string>
+          </property>
+         </widget>
+        </item>
+        <item alignment="Qt::AlignHCenter">
+         <widget class="QLabel" name="bedLabel_6">
+          <property name="minimumSize">
+           <size>
+            <width>20</width>
+            <height>20</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <family>Gotham</family>
+            <pointsize>16</pointsize>
+            <weight>50</weight>
+            <bold>false</bold>
+            <underline>false</underline>
+            <strikeout>false</strikeout>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">margin : 4px</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="pixmap">
+           <pixmap resource="../resources/resource.qrc">:/Icons/img/icons/chamberHeatIcon.png</pixmap>
+          </property>
+          <property name="scaledContents">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="chamber50PreheatButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2014,7 +2392,7 @@ QPushButton:focus {
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="H090PreheatButton">
+         <widget class="QPushButton" name="chamber90PreheatButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2085,12 +2463,12 @@ QPushButton:focus {
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_H0_inner" stretch="3,2">
+       <layout class="QHBoxLayout" name="horizontalLayout_15" stretch="3,2">
         <property name="spacing">
          <number>0</number>
         </property>
         <item>
-         <widget class="QSpinBox" name="H0TempSpinBox">
+         <widget class="QSpinBox" name="chamberTempSpinBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2192,7 +2570,7 @@ QSpinBox::down-button:pressed {
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="setH0TempButton">
+         <widget class="QPushButton" name="setChamberTempButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2250,23 +2628,23 @@ QPushButton:focus {
       </item>
      </layout>
     </widget>
-    <widget class="QWidget" name="horizontalLayoutWidget_H1">
+    <widget class="QWidget" name="horizontalLayoutWidget_7">
      <property name="geometry">
       <rect>
-       <x>520</x>
+       <x>680</x>
        <y>300</y>
        <width>301</width>
        <height>161</height>
       </rect>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_H1" stretch="1,3">
+     <layout class="QHBoxLayout" name="horizontalLayout_16" stretch="1,3">
       <item>
-       <layout class="QVBoxLayout" name="verticalLayout_H1">
+       <layout class="QVBoxLayout" name="verticalLayout_9">
         <property name="spacing">
          <number>0</number>
         </property>
         <item alignment="Qt::AlignHCenter">
-         <widget class="QLabel" name="H1Label">
+         <widget class="QLabel" name="spoolLabel">
           <property name="font">
            <font>
             <family>Gotham Light</family>
@@ -2279,12 +2657,12 @@ QPushButton:focus {
            <string notr="true">color: rgb(255, 255, 255);</string>
           </property>
           <property name="text">
-           <string>H1</string>
+           <string>Spool</string>
           </property>
          </widget>
         </item>
         <item alignment="Qt::AlignHCenter">
-         <widget class="QLabel" name="H1IconLabel">
+         <widget class="QLabel" name="spoolLabel_1">
           <property name="minimumSize">
            <size>
             <width>20</width>
@@ -2314,7 +2692,7 @@ QPushButton:focus {
            <string/>
           </property>
           <property name="pixmap">
-           <pixmap resource="../resources/resource.qrc">:/Icons/img/icons/Inlet.png</pixmap>
+           <pixmap resource="../resources/resource.qrc">:/Icons/img/icons/spoolHeating.png</pixmap>
           </property>
           <property name="scaledContents">
            <bool>true</bool>
@@ -2322,7 +2700,7 @@ QPushButton:focus {
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="H140PreheatButton">
+         <widget class="QPushButton" name="spool40PreheatButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2392,7 +2770,7 @@ QPushButton:focus {
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="H160PreheatButton">
+         <widget class="QPushButton" name="spool60PreheatButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2463,12 +2841,12 @@ QPushButton:focus {
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_H1_inner" stretch="3,2">
+       <layout class="QHBoxLayout" name="horizontalLayout_17" stretch="3,2">
         <property name="spacing">
          <number>0</number>
         </property>
         <item>
-         <widget class="QSpinBox" name="H1TempSpinBox">
+         <widget class="QSpinBox" name="spoolTempSpinBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -2570,7 +2948,7 @@ QSpinBox::down-button:pressed {
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="setH1TempButton">
+         <widget class="QPushButton" name="setSpoolTempButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>

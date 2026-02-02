@@ -2250,6 +2250,7 @@ QPushButton:focus {
       </item>
      </layout>
     </widget>
+    </widget>
     <widget class="QWidget" name="horizontalLayoutWidget_H1">
      <property name="geometry">
       <rect>

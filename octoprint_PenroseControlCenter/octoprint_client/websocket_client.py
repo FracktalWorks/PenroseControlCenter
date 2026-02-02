@@ -731,6 +731,12 @@ class OctoPrintWebSocket(QThread):
                                 'tool1Target': temp(data, "tool1", "target"),
                                 'bedActual': temp(data, "bed", "actual"),
                                 'bedTarget': temp(data, "bed", "target"),
+                                # Secondary heaters H0 and H1 (Penrose)
+                                'H0Actual': temp(data, "H0", "actual"),
+                                'H0Target': temp(data, "H0", "target"),
+                                'H1Actual': temp(data, "H1", "actual"),
+                                'H1Target': temp(data, "H1", "target"),
+                                # Legacy Volterra heaters (chamber/filament)
                                 'chamberActual': temp(data, "chamber", "actual"),
                                 'chamberTarget': temp(data, "chamber", "target"),
                                 'filamentActual': temp(data, "filament", "actual"),
@@ -739,8 +745,8 @@ class OctoPrintWebSocket(QThread):
                             self.logger.debug(f"Temperature update: Tool0: {temperatures['tool0Actual']}°C/{temperatures['tool0Target']}°C, "
                                             f"Tool1: {temperatures['tool1Actual']}°C/{temperatures['tool1Target']}°C, "
                                             f"Bed: {temperatures['bedActual']}°C/{temperatures['bedTarget']}°C, "
-                                            f"Chamber: {temperatures['chamberActual']}°C/{temperatures['chamberTarget']}°C, "
-                                            f"Filament: {temperatures['filamentActual']}°C/{temperatures['filamentTarget']}°C")
+                                            f"H0: {temperatures['H0Actual']}°C/{temperatures['H0Target']}°C, "
+                                            f"H1: {temperatures['H1Actual']}°C/{temperatures['H1Target']}°C")
                             try:
                                 self.temperatures_signal.emit(temperatures)
                             except Exception as e:

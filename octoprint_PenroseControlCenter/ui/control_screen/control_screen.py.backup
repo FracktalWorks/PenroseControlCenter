@@ -286,17 +286,17 @@ class ControlScreen(QWidget):
             if bed_temp_text and bed_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
                 self.bedTempSpinBox.setProperty("value", float(bed_temp_text))
             
-            # Update H0 secondary heater temperature spinbox
-            if self.H0TempSpinBox and hasattr(home_screen, 'H0TargetTemperature'):
-                H0_temp_text = home_screen.H0TargetTemperature.text().replace("°C", "").strip()
-                if H0_temp_text and H0_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
-                    self.H0TempSpinBox.setProperty("value", float(H0_temp_text))
+            # Update chamber temperature spinbox
+            if self.chamberTempSpinBox and hasattr(home_screen, 'chamberTargetTemperature'):
+                chamber_temp_text = home_screen.chamberTargetTemperature.text().replace("°C", "").strip()
+                if chamber_temp_text and chamber_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    self.chamberTempSpinBox.setProperty("value", float(chamber_temp_text))
             
-            # Update H1 secondary heater temperature spinbox
-            if self.H1TempSpinBox and hasattr(home_screen, 'H1TargetTemperature'):
-                H1_temp_text = home_screen.H1TargetTemperature.text().replace("°C", "").strip()
-                if H1_temp_text and H1_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
-                    self.H1TempSpinBox.setProperty("value", float(H1_temp_text))
+            # Update spool/filament temperature spinbox
+            if self.spoolTempSpinBox and hasattr(home_screen, 'spoolTargetTemperature'):
+                spool_temp_text = home_screen.spoolTargetTemperature.text().replace("°C", "").strip()
+                if spool_temp_text and spool_temp_text.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    self.spoolTempSpinBox.setProperty("value", float(spool_temp_text))
                     
         except Exception as e:
             self.logger.debug(f"Could not update spinboxes from home screen: {e}")
@@ -349,18 +349,20 @@ class ControlScreen(QWidget):
             self.octoprint_client.setBedTemperature(0)
             # Turn off all heaters
             self.octoprint_client.gcode(command='M144')  # Ring heater off (M144)
-            self.octoprint_client.gcode(command='M104 H0 S0')  # Secondary heater H0
-            self.octoprint_client.gcode(command='M104 H1 S0')  # Secondary heater H1
+            self.octoprint_client.gcode(command='M141 S0')  # Chamber heater
+            self.octoprint_client.gcode(command='M142 S0')  # Filament/Spool heater
             
             # Update UI spinboxes
             self.toolTempSpinBox.setProperty("value", 0)
             self.bedTempSpinBox.setProperty("value", 0)
             if self.ringTempSpinBox:
                 self.ringTempSpinBox.setProperty("value", 0)
-            if self.H0TempSpinBox:
-                self.H0TempSpinBox.setProperty("value", 0)
-            if self.H1TempSpinBox:
-                self.H1TempSpinBox.setProperty("value", 0)
+            if self.ALFTempSpinBox:
+                self.ALFTempSpinBox.setProperty("value", 0)
+            if self.chamberTempSpinBox:
+                self.chamberTempSpinBox.setProperty("value", 0)
+            if self.spoolTempSpinBox:
+                self.spoolTempSpinBox.setProperty("value", 0)
             
             # Update printer model to propagate to home screen
             self.main_window.printer_model.update_ring_heater_power(0)
@@ -460,17 +462,28 @@ class ControlScreen(QWidget):
             logger.error("Error in ControlScreen.setRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.setRingTemp: {}".format(e), overlay=True)
     
-    def setH0Temp(self):
+    def setALFTemp(self):
         """
-        Sets the temperature of the H0 secondary heater using M104 H0 command
+        Sets the ALF ring heater power level using M143 command
+        Converts percentage (0-100%) to PWM value (0-255)
         """
-        logger.info("ControlScreen.setH0Temp started")
+        logger.info("ControlScreen.setALFTemp started")
         try:
-            temp = self.H0TempSpinBox.value()
-            self.octoprint_client.gcode(command=f'M104 H0 S{temp}')
+            # Get percentage from spinbox (0-150%)
+            percentage = self.ALFTempSpinBox.value()
+            # Convert percentage to PWM value (0-255)
+            # 100% = 255, so multiply by 2.55
+            pwm_value = int(percentage * 2.55)
+            # Clamp to 0-255 range
+            pwm_value = max(0, min(255, pwm_value))
+            
+            self.octoprint_client.gcode(command=f'M143 S{pwm_value}')
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(pwm_value)
+            logger.info(f"ALF ring heater set to {percentage}% (PWM: {pwm_value})")
         except Exception as e:
-            logger.error("Error in ControlScreen.setH0Temp: {}".format(e))
-            dialog.WarningOk(self, "Error in ControlScreen.setH0Temp: {}".format(e), overlay=True)
+            logger.error("Error in ControlScreen.setALFTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setALFTemp: {}".format(e), overlay=True)
 
     def preheatRingTemp(self, temp):
         """
@@ -489,45 +502,79 @@ class ControlScreen(QWidget):
             logger.error("Error in ControlScreen.preheatRingTemp: {}".format(e))
             dialog.WarningOk(self, "Error in ControlScreen.preheatRingTemp: {}".format(e), overlay=True)
     
-    def preheatH0Temp(self, temp):
+    def preheatALFTemp(self, percentage):
         """
-        Preheats the H0 secondary heater to the given temperature using M104 H0 command
+        Sets the ALF ring heater to a preset power level using M143 command
+        param percentage: percentage (0-100) to set the ALF ring heater to
+        """
+        logger.info(f"ControlScreen.preheatALFTemp started with {percentage}%")
+        try:
+            # Convert percentage to PWM value (0-255)
+            pwm_value = int(percentage * 2.55)
+            # Clamp to 0-255 range
+            pwm_value = max(0, min(255, pwm_value))
+            
+            self.octoprint_client.gcode(command=f'M143 S{pwm_value}')
+            if self.ALFTempSpinBox:
+                self.ALFTempSpinBox.setProperty("value", percentage)
+            # Update printer model to propagate to home screen
+            self.main_window.printer_model.update_ring_heater_power(pwm_value)
+            logger.info(f"ALF ring heater preset to {percentage}% (PWM: {pwm_value})")
+        except Exception as e:
+            logger.error("Error in ControlScreen.preheatALFTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatALFTemp: {}".format(e), overlay=True)
+
+    def setChamberTemp(self):
+        """
+        Sets the temperature of the chamber heater using M141 command
+        """
+        logger.info("ControlScreen.setChamberTemp started")
+        try:
+            temp = self.chamberTempSpinBox.value()
+            self.octoprint_client.gcode(command=f'M141 S{temp}')
+        except Exception as e:
+            logger.error("Error in ControlScreen.setChamberTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setChamberTemp: {}".format(e), overlay=True)
+
+    def preheatChamberTemp(self, temp):
+        """
+        Preheats the chamber heater to the given temperature using M141 command
         param temp: temperature to preheat to
         """
-        logger.info(f"ControlScreen.preheatH0Temp started with {temp}C")
+        logger.info("ControlScreen.preheatChamberTemp started")
         try:
-            self.octoprint_client.gcode(command=f'M104 H0 S{temp}')
-            if self.H0TempSpinBox:
-                self.H0TempSpinBox.setProperty("value", temp)
+            self.octoprint_client.gcode(command=f'M141 S{temp}')
+            if self.chamberTempSpinBox:
+                self.chamberTempSpinBox.setProperty("value", temp)
         except Exception as e:
-            logger.error("Error in ControlScreen.preheatH0Temp: {}".format(e))
-            dialog.WarningOk(self, "Error in ControlScreen.preheatH0Temp: {}".format(e), overlay=True)
+            logger.error("Error in ControlScreen.preheatChamberTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatChamberTemp: {}".format(e), overlay=True)
 
-    def setH1Temp(self):
+    def setSpoolTemp(self):
         """
-        Sets the temperature of the H1 secondary heater using M104 H1 command
+        Sets the temperature of the filament/spool heater using M142 command
         """
-        logger.info("ControlScreen.setH1Temp started")
+        logger.info("ControlScreen.setSpoolTemp started")
         try:
-            temp = self.H1TempSpinBox.value()
-            self.octoprint_client.gcode(command=f'M104 H1 S{temp}')
+            temp = self.spoolTempSpinBox.value()
+            self.octoprint_client.gcode(command=f'M142 S{temp}')
         except Exception as e:
-            logger.error("Error in ControlScreen.setH1Temp: {}".format(e))
-            dialog.WarningOk(self, "Error in ControlScreen.setH1Temp: {}".format(e), overlay=True)
+            logger.error("Error in ControlScreen.setSpoolTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.setSpoolTemp: {}".format(e), overlay=True)
 
-    def preheatH1Temp(self, temp):
+    def preheatSpoolTemp(self, temp):
         """
-        Preheats the H1 secondary heater to the given temperature using M104 H1 command
+        Preheats the filament/spool heater to the given temperature using M142 command
         param temp: temperature to preheat to
         """
-        logger.info(f"ControlScreen.preheatH1Temp started with {temp}C")
+        logger.info("ControlScreen.preheatSpoolTemp started")
         try:
-            self.octoprint_client.gcode(command=f'M104 H1 S{temp}')
-            if self.H1TempSpinBox:
-                self.H1TempSpinBox.setProperty("value", temp)
+            self.octoprint_client.gcode(command=f'M142 S{temp}')
+            if self.spoolTempSpinBox:
+                self.spoolTempSpinBox.setProperty("value", temp)
         except Exception as e:
-            logger.error("Error in ControlScreen.preheatH1Temp: {}".format(e))
-            dialog.WarningOk(self, "Error in ControlScreen.preheatH1Temp: {}".format(e), overlay=True)
+            logger.error("Error in ControlScreen.preheatSpoolTemp: {}".format(e))
+            dialog.WarningOk(self, "Error in ControlScreen.preheatSpoolTemp: {}".format(e), overlay=True)
 
     def selectToolTemperature(self):
         """
