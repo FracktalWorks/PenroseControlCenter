@@ -1,15 +1,9 @@
 include README.md
-recursive-include octoprint_VolterraControlCenter/ui *
-recursive-include octoprint_VolterraControlCenter/config *
-recursive-include octoprint_VolterraControlCenter/Feeltek *
-recursive-include octoprint_VolterraControlCenter/firmware *
-recursive-include octoprint_VolterraControlCentergcode *
-recursive-include octoprint_VolterraControlCenter/hurry *
-recursive-include octoprint_VolterraControlCenter/models *
-recursive-include octoprint_VolterraControlCenter/moonrakerClient *
-recursive-include octoprint_VolterraControlCenter/octoprint_client *
-recursive-include octoprint_VolterraControlCenter/processAutomationController *
-recursive-include octoprint_VolterraControlCenter/temperatureController *
-recursive-include octoprint_VolterraControlCenter/utils *
+recursive-include octoprint_PenroseControlCenter/ui *
+recursive-include octoprint_PenroseControlCenter/config *
+recursive-include octoprint_PenroseControlCenter/firmware *
+recursive-include octoprint_PenroseControlCenter/models *
+recursive-include octoprint_PenroseControlCenter/octoprint_client *
+recursive-include octoprint_PenroseControlCenter/utils *
 include versioneer.py
-include octoprint_VolterraControlCenter/_version.py
+include octoprint_PenroseControlCenter/_version.py

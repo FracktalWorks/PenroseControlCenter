@@ -41,10 +41,10 @@ del get_versions
 # 			self.is_running = False
 
 
-class VolterraControlCenter(octoprint.plugin.StartupPlugin):
+class PenroseControlCenter(octoprint.plugin.StartupPlugin):
     def on_after_startup(self):
         # self.resetInetrval = int(self._settings.get(["resetInetrval"]))
-        self._logger.info("TouchUI Plugin Started")
+        self._logger.info("Penrose TouchUI Plugin Started")
         
         # Check and update xinit file
         self._check_and_update_xinit_file()
@@ -88,11 +88,11 @@ sudo python3 main.py
                     current_content = f.read()
                     
                 # Check if the content contains the correct path to our plugin
-                if plugin_dir not in current_content or "octoprint_VolterraControlCenter" not in current_content:
+                if plugin_dir not in current_content or "octoprint_PenroseControlCenter" not in current_content:
                     needs_update = True
                     self._logger.info(f"xinit file does not contain correct path to {plugin_dir}")
                 else:
-                    self._logger.info("xinit file already contains correct ControlCenter path")
+                    self._logger.info("xinit file already contains correct PenroseControlCenter path")
                     
             except FileNotFoundError:
                 needs_update = True
@@ -129,7 +129,7 @@ sudo python3 main.py
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
                     
-                    self._logger.info(f"Successfully updated xinit file with ControlCenter path: {plugin_dir}")
+                    self._logger.info(f"Successfully updated xinit file with PenroseControlCenter path: {plugin_dir}")
                     
                     # Restart the X session with the new xinit configuration
                     self._restart_touch_ui()
@@ -210,29 +210,29 @@ sudo python3 main.py
 
     def get_update_information(self):
         return dict(
-            ControlCenter=dict(
-                displayName="VolterraControlCenter",
+            PenroseControlCenter=dict(
+                displayName="PenroseControlCenter",
                 displayVersion=self._plugin_version,
                 # version check: github repository
                 type="github_release",
                 user="FracktalWorks",
-                repo="VolterraControlCenter",
+                repo="PenroseControlCenter",
                 current=self._plugin_version,
 
                 # update method: pip
-                pip="https://github.com/FracktalWorks/VolterraControlCenter/archive/{target_version}.zip"
+                pip="https://github.com/FracktalWorks/PenroseControlCenter/archive/{target_version}.zip"
             )
         )
 
 
-__plugin_name__ = "VolterraControlCenter"
+__plugin_name__ = "PenroseControlCenter"
 __plugin_version__ = __version__
 __plugin_pythoncompat__ = ">=3,<4"
 
 
 def __plugin_load__():
     global __plugin_implementation__
-    __plugin_implementation__ = VolterraControlCenter()
+    __plugin_implementation__ = PenroseControlCenter()
 
     global __plugin_hooks__
     __plugin_hooks__ = {
