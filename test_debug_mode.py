@@ -6,8 +6,8 @@ Test script for advanced debugging mode functionality
 import sys
 import os
 
-# Add the octoprint_ControlCenter directory to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'octoprint_ControlCenter'))
+# Add the octoprint_PenroseControlCenter directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'octoprint_PenroseControlCenter'))
 
 from utils.logger import get_logger, set_advanced_debug_mode, get_advanced_debug_mode
 
