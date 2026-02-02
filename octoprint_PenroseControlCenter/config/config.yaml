@@ -8,7 +8,7 @@ api:
   allowCrossOrigin: true
   key: B508534ED20348F090B4D0AD637D3660
 appearance:
-  name: Volterra-ALF
+  name: Penrose 600
 feature:
   sdSupport: false
 plugins:
@@ -62,7 +62,7 @@ plugins:
   softwareupdate:
     _config_version: 9
     checks:
-      ControlCenter:
+      PenroseControlCenter:
         disabled: false
       pi_support:
         disabled: true
@@ -114,14 +114,30 @@ system:
     name: Stop video stream
 temperature:
   profiles:
+  - bed: 80
+    chamber: null
+    extruder: 220
+    name: PLA Pellets
   - bed: 100
     chamber: null
-    extruder: 210
-    name: ABS
-  - bed: 60
+    extruder: 240
+    name: ABS Pellets
+  - bed: 100
     chamber: null
-    extruder: 180
-    name: PLA
+    extruder: 250
+    name: PETG Pellets
+  - bed: 120
+    chamber: null
+    extruder: 260
+    name: ASA Pellets
+  - bed: 140
+    chamber: null
+    extruder: 300
+    name: PC Pellets
+  - bed: 120
+    chamber: null
+    extruder: 280
+    name: Nylon Pellets
 webcam:
   ffmpeg: /usr/bin/ffmpeg
   snapshot: http://127.0.0.1:8080/?action=snapshot

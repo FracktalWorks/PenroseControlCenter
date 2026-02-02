@@ -3,7 +3,8 @@ Printer UI Configuration Module
 
 This module handles printer configuration (single vs dual nozzle) and manages
 which UI elements should be shown/hidden based on the printer type.
-Also handles Volterra ALF specific UI elements like heater ring.
+Also handles Volterra ALF specific UI elements like heater ring, heated chamber,
+and filament spool heater.
 """
 
 import config
@@ -22,6 +23,20 @@ def has_heater_ring():
     # Access the current value dynamically to pick up changes from Klipper config loading
     result = config.HAS_HEATER_RING
     logger.debug(f"has_heater_ring() returning: {result}")
+    return result
+
+def has_heated_chamber():
+    """Check if the printer has a heated chamber/enclosure."""
+    # Access the current value dynamically to pick up changes from Klipper config loading
+    result = config.HAS_HEATED_CHAMBER
+    logger.debug(f"has_heated_chamber() returning: {result}")
+    return result
+
+def has_spool_heater():
+    """Check if the printer has a filament spool heater/dryer."""
+    # Access the current value dynamically to pick up changes from Klipper config loading
+    result = config.HAS_SPOOL_HEATER
+    logger.debug(f"has_spool_heater() returning: {result}")
     return result
 
 # UI elements that should be hidden for single nozzle printers
@@ -51,6 +66,22 @@ DUAL_NOZZLE_ELEMENTS = {
 HEATER_RING_ELEMENTS = {
     'home_screen': [
         'heaterRingLabel', 'ALFLabel', 'heaterRingSeparationLine', 'label_15'
+    ]
+}
+
+# UI elements that should only be shown for printers with heated chamber
+HEATED_CHAMBER_ELEMENTS = {
+    'home_screen': [
+        'chamberLabel', 'chamberTextLabel', 'chamberTargetTemperature', 
+        'chamberActualTemperature', 'chamberTempBar'
+    ]
+}
+
+# UI elements that should only be shown for printers with filament spool heater
+SPOOL_HEATER_ELEMENTS = {
+    'home_screen': [
+        'spoolLabel', 'spoolTextLabel', 'spoolTargetTemperature',
+        'spoolActualTemperature', 'spoolTempBar'
     ]
 }
 
@@ -111,6 +142,30 @@ def get_heater_ring_elements(screen_name):
     """
     return HEATER_RING_ELEMENTS.get(screen_name, [])
 
+def get_heated_chamber_elements(screen_name):
+    """
+    Get the list of heated chamber elements for a specific screen.
+    
+    Args:
+        screen_name: Name of the screen (e.g., 'home_screen')
+        
+    Returns:
+        list: List of element names to show only for heated chamber printers
+    """
+    return HEATED_CHAMBER_ELEMENTS.get(screen_name, [])
+
+def get_spool_heater_elements(screen_name):
+    """
+    Get the list of spool heater elements for a specific screen.
+    
+    Args:
+        screen_name: Name of the screen (e.g., 'home_screen')
+        
+    Returns:
+        list: List of element names to show only for spool heater printers
+    """
+    return SPOOL_HEATER_ELEMENTS.get(screen_name, [])
+
 def hide_heater_ring_elements(widget, element_names):
     """
     Show or hide heater ring UI elements based on printer configuration.
@@ -139,6 +194,62 @@ def hide_heater_ring_elements(widget, element_names):
         else:
             logger.warning(f"Heater ring element not found: {element_name}")
 
+def hide_heated_chamber_elements(widget, element_names):
+    """
+    Show or hide heated chamber UI elements based on printer configuration.
+    
+    Args:
+        widget: The parent widget containing the elements
+        element_names: List of element names to show/hide based on heated chamber presence
+    """
+    has_chamber = has_heated_chamber()
+    logger.info(f"hide_heated_chamber_elements called: has_chamber={has_chamber}, elements={element_names}")
+    for element_name in element_names:
+        element = getattr(widget, element_name, None)
+        if element is None:
+            # Try findChild as fallback for elements not stored as attributes
+            element = widget.findChild(QWidget, element_name)
+        if element:
+            try:
+                if has_chamber:
+                    element.show()
+                    logger.info(f"Shown heated chamber element: {element_name}")
+                else:
+                    element.hide()
+                    logger.info(f"Hidden heated chamber element: {element_name}")
+            except Exception as e:
+                logger.error(f"Error showing/hiding element {element_name}: {e}")
+        else:
+            logger.warning(f"Heated chamber element not found: {element_name}")
+
+def hide_spool_heater_elements(widget, element_names):
+    """
+    Show or hide spool heater UI elements based on printer configuration.
+    
+    Args:
+        widget: The parent widget containing the elements
+        element_names: List of element names to show/hide based on spool heater presence
+    """
+    has_spool = has_spool_heater()
+    logger.info(f"hide_spool_heater_elements called: has_spool={has_spool}, elements={element_names}")
+    for element_name in element_names:
+        element = getattr(widget, element_name, None)
+        if element is None:
+            # Try findChild as fallback for elements not stored as attributes
+            element = widget.findChild(QWidget, element_name)
+        if element:
+            try:
+                if has_spool:
+                    element.show()
+                    logger.info(f"Shown spool heater element: {element_name}")
+                else:
+                    element.hide()
+                    logger.info(f"Hidden spool heater element: {element_name}")
+            except Exception as e:
+                logger.error(f"Error showing/hiding element {element_name}: {e}")
+        else:
+            logger.warning(f"Spool heater element not found: {element_name}")
+
 def apply_nozzle_config_to_screen(widget, screen_name):
     """
     Apply nozzle configuration to a specific screen widget.
@@ -149,6 +260,8 @@ def apply_nozzle_config_to_screen(widget, screen_name):
     """
     hide_dual_nozzle_elements(widget, get_dual_nozzle_elements(screen_name))
     hide_heater_ring_elements(widget, get_heater_ring_elements(screen_name))
+    hide_heated_chamber_elements(widget, get_heated_chamber_elements(screen_name))
+    hide_spool_heater_elements(widget, get_spool_heater_elements(screen_name))
 
 def apply_nozzle_config_to_all_screens(main_window):
     """
@@ -183,3 +296,31 @@ def apply_nozzle_config_to_all_screens(main_window):
             logger.info("Hidden heater ring elements - printer does not have heater ring")
     except Exception as e:
         logger.error(f"Error applying heater ring configuration: {e}")
+
+    # Apply heated chamber visibility (show if has_heated_chamber, hide otherwise)
+    try:
+        for screen_name, elements in HEATED_CHAMBER_ELEMENTS.items():
+            if hasattr(main_window, screen_name):
+                screen = getattr(main_window, screen_name)
+                hide_heated_chamber_elements(screen, elements)
+                
+        if has_heated_chamber():
+            logger.info("Heated chamber configuration active - heated chamber elements shown")
+        else:
+            logger.info("Hidden heated chamber elements - printer does not have heated chamber")
+    except Exception as e:
+        logger.error(f"Error applying heated chamber configuration: {e}")
+
+    # Apply spool heater visibility (show if has_spool_heater, hide otherwise)
+    try:
+        for screen_name, elements in SPOOL_HEATER_ELEMENTS.items():
+            if hasattr(main_window, screen_name):
+                screen = getattr(main_window, screen_name)
+                hide_spool_heater_elements(screen, elements)
+                
+        if has_spool_heater():
+            logger.info("Spool heater configuration active - spool heater elements shown")
+        else:
+            logger.info("Hidden spool heater elements - printer does not have spool heater")
+    except Exception as e:
+        logger.error(f"Error applying spool heater configuration: {e}")

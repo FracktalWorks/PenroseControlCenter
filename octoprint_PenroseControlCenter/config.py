@@ -58,7 +58,9 @@ DEFAULT_TOOL0_PURGE_POSITION = {'X': -30, 'Y': -77}
 DEFAULT_TOOL1_PURGE_POSITION = {'X': 655, 'Y': -77}
 DEFAULT_PTFE_TUBE_LENGTH = 1500  # 2400 for 600x600, 1500 for 600x300 keep as multiples of 300 only
 DEFAULT_IS_DUAL_NOZZLE = True  # Set to False for single nozzle printers
-DEFAULT_HAS_HEATER_RING = True  # Set to True for Volterra ALF printers with heater ring
+DEFAULT_HAS_HEATER_RING = False  # Set to True for Volterra ALF printers with heater ring
+DEFAULT_HAS_HEATED_CHAMBER = False  # Set to True for printers with heated chamber/enclosure
+DEFAULT_HAS_SPOOL_HEATER = False  # Set to True for printers with filament spool heater/dryer
 
 # Dynamic printer configuration (loaded from Klipper at runtime)
 # These will be populated by load_printer_config_from_klipper()
@@ -69,6 +71,8 @@ tool1PurgePosition = DEFAULT_TOOL1_PURGE_POSITION.copy()
 ptfeTubeLength = DEFAULT_PTFE_TUBE_LENGTH
 IS_DUAL_NOZZLE = DEFAULT_IS_DUAL_NOZZLE
 HAS_HEATER_RING = DEFAULT_HAS_HEATER_RING
+HAS_HEATED_CHAMBER = DEFAULT_HAS_HEATED_CHAMBER
+HAS_SPOOL_HEATER = DEFAULT_HAS_SPOOL_HEATER
 
 
 def load_printer_config_from_klipper():
@@ -88,6 +92,7 @@ def load_printer_config_from_klipper():
             
         global calibrationPosition, machineBuildSize, tool0PurgePosition
         global tool1PurgePosition, ptfeTubeLength, IS_DUAL_NOZZLE, HAS_HEATER_RING
+        global HAS_HEATED_CHAMBER, HAS_SPOOL_HEATER
         
         # Update global variables with extracted configuration
         if 'calibrationPosition' in config:
@@ -110,6 +115,12 @@ def load_printer_config_from_klipper():
 
         if 'HAS_HEATER_RING' in config:
             HAS_HEATER_RING = config['HAS_HEATER_RING']
+
+        if 'HAS_HEATED_CHAMBER' in config:
+            HAS_HEATED_CHAMBER = config['HAS_HEATED_CHAMBER']
+
+        if 'HAS_SPOOL_HEATER' in config:
+            HAS_SPOOL_HEATER = config['HAS_SPOOL_HEATER']
             
         return True
         
@@ -138,5 +149,7 @@ def get_printer_config():
         'tool1PurgePosition': tool1PurgePosition,
         'ptfeTubeLength': ptfeTubeLength,
         'IS_DUAL_NOZZLE': IS_DUAL_NOZZLE,
-        'HAS_HEATER_RING': HAS_HEATER_RING
+        'HAS_HEATER_RING': HAS_HEATER_RING,
+        'HAS_HEATED_CHAMBER': HAS_HEATED_CHAMBER,
+        'HAS_SPOOL_HEATER': HAS_SPOOL_HEATER
     }

@@ -205,7 +205,10 @@ class MainWindow(QMainWindow):
     
     def _on_printer_config_updated(self, config_dict):
         """Handle printer configuration updates from Klipper config loading."""
-        self.logger.info(f"Printer config updated, re-applying UI configuration. HAS_HEATER_RING={config_dict.get('HAS_HEATER_RING', False)}")
+        self.logger.info(f"Printer config updated, re-applying UI configuration. "
+                        f"HAS_HEATER_RING={config_dict.get('HAS_HEATER_RING', False)}, "
+                        f"HAS_HEATED_CHAMBER={config_dict.get('HAS_HEATED_CHAMBER', False)}, "
+                        f"HAS_SPOOL_HEATER={config_dict.get('HAS_SPOOL_HEATER', False)}")
         # Re-apply the nozzle/heater ring configuration since Klipper config may have changed
         self._apply_nozzle_configuration()
     

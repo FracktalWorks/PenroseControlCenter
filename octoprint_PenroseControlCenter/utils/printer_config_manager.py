@@ -322,6 +322,8 @@ class PrinterConfigManager:
             },
             'is_dual_nozzle': bool(variables.get('is_dual_nozzle', 1)),
             'has_heater_ring': bool(variables.get('has_heater_ring', 0)),
+            'has_heated_chamber': bool(variables.get('has_heated_chamber', 0)),
+            'has_spool_heater': bool(variables.get('has_spool_heater', 0)),
             'has_chamber_cooling': 'fan1' in variables,
             
             # Machine build size (compatible with config.py format)
@@ -357,6 +359,8 @@ class PrinterConfigManager:
             'ptfeTubeLength': variables.get('ptfe_tube_length', 1500),
             'IS_DUAL_NOZZLE': bool(variables.get('is_dual_nozzle', 1)),
             'HAS_HEATER_RING': bool(variables.get('has_heater_ring', 0)),
+            'HAS_HEATED_CHAMBER': bool(variables.get('has_heated_chamber', 0)),
+            'HAS_SPOOL_HEATER': bool(variables.get('has_spool_heater', 0)),
         }
         
         # Calculate bed dimensions for backwards compatibility
