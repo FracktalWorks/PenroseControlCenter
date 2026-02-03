@@ -26,8 +26,8 @@ DEFAULT_STATE = {
     },
     # Persistent user preferences (extendable)
     "preferences": {
-        "filament_runout_enabled": True,
-        "filament_jam_enabled": True,
+        "pellet_sensor_t0_enabled": True,  # T0 (Left) pellet level sensor - default enabled
+        "pellet_sensor_t1_enabled": True,  # T1 (Right) pellet level sensor - default enabled
         "print_compatibility_check_enabled": True,  # Default to enabled
         "print_restore_enabled": True,  # Default to enabled
         "auto_resume_enabled": False,  # Default to disabled
@@ -164,7 +164,7 @@ class PrinterPreferenceStore:
 
             Example:
                 with store.batch():
-                    store.set_preference('filament_runout_enabled', True)
+                    store.set_preference('pellet_sensor_t0_enabled', True)
                     store.set_tool_state('tool0', filament='PLA')
             """
             with self._lock:

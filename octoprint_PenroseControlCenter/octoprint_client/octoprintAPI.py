@@ -855,24 +855,36 @@ class octoprintAPI:
     def isFailureDetected(self):
         url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/isFailureDetected'
         headers = {'X-Api-Key': self.apiKey}
-        response = requests.get(url, headers=headers)
-        temp = response.json()
-        return temp
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200 and response.text:
+                return response.json()
+            return {"canRestore": False}
+        except (requests.exceptions.RequestException, json.JSONDecodeError):
+            return {"canRestore": False}
 
     def restore(self, restore = False):
         url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/restore'
         headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
         payload = {'restore': restore}
-        response = requests.post(url, data=json.dumps(payload), headers=headers)
-        temp = response.json()
-        return temp
+        try:
+            response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=5)
+            if response.status_code == 200 and response.text:
+                return response.json()
+            return {}
+        except (requests.exceptions.RequestException, json.JSONDecodeError):
+            return {}
 
     def getPrintRestoreSettings(self):
         url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/getSettings'
         headers = {'X-Api-Key': self.apiKey}
-        response = requests.get(url, headers=headers)
-        temp = response.json()
-        return temp
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200 and response.text:
+                return response.json()
+            return None
+        except (requests.exceptions.RequestException, json.JSONDecodeError):
+            return None
 
     def savePrintRestoreSettings(self, restore = False, enabled = True, interval = 1):
         url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/saveSettings'

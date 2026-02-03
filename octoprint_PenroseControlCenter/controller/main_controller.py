@@ -267,7 +267,7 @@ class MainController(QtCore.QObject):
         self.octoprint_websocket.active_extruder_signal.connect(self.printer_model.setActiveExtruder)
         self.octoprint_websocket.z_probe_offset_signal.connect(self.printer_model.updateEEPROMProbeOffset)
         self.octoprint_websocket.klipper_state_signal.connect(self.printer_model.update_klipper_state)
-        self.octoprint_websocket.filament_runout_state_signal.connect(self.printer_model.filamentRunoutState)
+        self.octoprint_websocket.filament_runout_state_signal.connect(self.printer_model.pelletSensorState)
         # Probe accuracy results signal for MVP architecture
         self.octoprint_websocket.probe_accuracy_signal.connect(self.printer_model.handle_probe_accuracy_result)
         # Ring heater power signal
@@ -278,9 +278,10 @@ class MainController(QtCore.QObject):
         self.printer_model.status_updated.connect(self.onPrinterStatusUpdated)
         # Connect to klipper state changes to monitor for unhealthy states
         self.printer_model.klipper_state_changed.connect(self.onKlipperStateChanged)
-        self.octoprint_websocket.filament_runout_sensor_triggered_signal.connect(self.filamentRunoutSensorTriggered)
-        self.octoprint_websocket.filament_jam_sensor_triggered_signal.connect(self.filamentJamSensorTriggered)
-        self.printer_model.filament_runout_state.connect(self.onFilamentRunoutState)
+        # Pellet sensor signals (Penrose pellet extruder uses pellet level sensors, not filament sensors)
+        self.octoprint_websocket.filament_runout_sensor_triggered_signal.connect(self.pelletSensorLowTriggered)
+        # Note: filament_jam_sensor_triggered_signal not used for pellet extruder
+        self.printer_model.pellet_sensor_state.connect(self.onPelletSensorState)
         self.octoprint_websocket.z_probing_failed_signal.connect(self.showProbingFailed)
         self.octoprint_websocket.printer_error_signal.connect(self.showPrinterError)
         # Print lifecycle events
@@ -608,74 +609,42 @@ class MainController(QtCore.QObject):
             self.logger.error(f"Error updating print restore UI state: {e}")
 
     # =========================================================================
-    # SECTION: Filament Sensor Management
+    # SECTION: Pellet Sensor Management (Penrose Pellet Extruder)
     # =========================================================================
 
-    def apply_filament_sensor_state(self):
-        """Enable/disable sensors per preferences & active print state."""
+    def apply_pellet_sensor_state(self):
+        """Enable/disable pellet level sensors per preferences.
+        
+        Uses Klipper's SET_FILAMENT_SENSOR command with the sensor names:
+        - pellet_sensor_left (T0)
+        - pellet_sensor_right (T1)
+        """
         if not self.octoprint_client:
             return
         try:
-            runout_pref = getattr(self.printer_model, 'filament_runout_sensor_persistent_state', False)
-            jam_pref = getattr(self.printer_model, 'filament_jam_sensor_persistent_state', False)
-            runout_state = 1 if runout_pref else 0
-            jam_state = 1 if jam_pref else 0
-            self.octoprint_client.gcode(command=f'SET_FILAMENT_RUNOUT_SENSOR S={runout_state}')
-            self.octoprint_client.gcode(command=f'SET_FILAMENT_JAM_SENSOR S={jam_state}')
-            self.logger.info(f"Applied filament sensor state: runout={runout_state} jam={jam_state}")
+            t0_enabled = getattr(self.printer_model, 'pellet_sensor_t0_enabled', True)
+            t1_enabled = getattr(self.printer_model, 'pellet_sensor_t1_enabled', True)
+            t0_state = 1 if t0_enabled else 0
+            t1_state = 1 if t1_enabled else 0
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE={t0_state}')
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE={t1_state}')
+            self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} T1(right)={t1_state}")
         except Exception as e:
-            self.logger.error(f"Failed applying filament sensor state: {e}")
+            self.logger.error(f"Failed applying pellet sensor state: {e}")
 
-    def filamentRunoutSensorTriggered(self, tool):
-        self.logger.info(f"Filament runout sensor triggered for tool: {tool}")
-        try:
-            # Only respond if printer is actively printing and sensor preference is enabled
-            if self.printer_model.printer_status != "Printing":
-                self.logger.debug(f"Ignoring filament runout trigger - printer not printing (status: {self.printer_model.printer_status})")
-                return
-                
-            if not getattr(self.printer_model, 'filament_runout_sensor_persistent_state', False):
-                self.logger.debug("Ignoring filament runout trigger - sensor preference disabled")
-                return
-            
-            self.octoprint_client.pausePrint()
-            if not self.filamentTriggerDialogShown:
-                self.filamentTriggerDialogShown = True
-                dialog.WarningOk(
-                    self.main_window, 
-                    f"Filament runout detected on {tool.upper()}!\n\nPrint has been paused. Please load new filament and resume printing.",
-                    overlay=True
-                )
-                self.filamentTriggerDialogShown = False
-        except Exception as e:
-            self.logger.error(f"Error showing filament runout dialog: {e}")
+    def pelletSensorLowTriggered(self, tool):
+        """Handle pellet level low event - this is informational only.
+        
+        The pellet sensor firmware handles auto-refill automatically.
+        This method is for logging/notification purposes.
+        """
+        self.logger.info(f"Pellet level low detected on {tool}")
+        # Note: Auto-refill is handled by the Klipper firmware macros
+        # No action needed from the UI - the vacuum will automatically refill
 
-    def filamentJamSensorTriggered(self, tool):
-        self.logger.info(f"Filament jam sensor triggered for tool: {tool}")
-        try:
-            # Only respond if printer is actively printing and sensor preference is enabled
-            if self.printer_model.printer_status != "Printing":
-                self.logger.debug(f"Ignoring filament jam trigger - printer not printing (status: {self.printer_model.printer_status})")
-                return
-                
-            if not getattr(self.printer_model, 'filament_jam_sensor_persistent_state', False):
-                self.logger.debug("Ignoring filament jam trigger - sensor preference disabled")
-                return
-            
-            self.octoprint_client.pausePrint()
-            if not self.filamentTriggerDialogShown:
-                self.filamentTriggerDialogShown = True
-                dialog.WarningOk(
-                    self.main_window,
-                    f"Filament jam detected on {tool.upper()}!\n\nPrint has been paused. Please clear the jam and resume printing.",
-                    overlay=True
-                )
-                self.filamentTriggerDialogShown = False
-        except Exception as e:
-            self.logger.error(f"Error showing filament jam dialog: {e}")
-
-    def onFilamentRunoutState(self, sensor, state):
-        self.logger.info(f"Filament runout state changed: {sensor} is {'present' if state else 'not present'}")
+    def onPelletSensorState(self, sensor, state):
+        """Handle pellet sensor state changes for logging."""
+        self.logger.info(f"Pellet sensor state changed: {sensor} is {'OK' if state else 'LOW'}")
 
     # =========================================================================
     # SECTION: Print Lifecycle Events
@@ -937,8 +906,8 @@ class MainController(QtCore.QObject):
         self.logger.info("MainController.onStartupCompleted started")
         if self.octoprint_client:
             try:
-                self.octoprint_client.gcode(command='SET_FILAMENT_RUNOUT_SENSOR S=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_JAM_SENSOR S=0')
+                # Apply pellet sensor preferences on startup
+                self.apply_pellet_sensor_state()
                 # Reload printer configuration from Klipper after connection is established
                 self.printer_model.reload_printer_configuration()
                 
@@ -956,7 +925,7 @@ class MainController(QtCore.QObject):
                 try:
                     self.sync_print_restore_settings()
                 except Exception as e:
-                    self.logger.warning(f"Failed applying initial filament sensor state: {e}")
+                    self.logger.warning(f"Failed syncing print restore settings: {e}")
             except Exception as e:
                 self.logger.error(f"Error in MainController.onStartupCompleted: {e}")
                 dialog.WarningOk(self.main_window, f"Error in MainController.onStartupCompleted: {e}", overlay=True)
@@ -1009,8 +978,8 @@ class MainController(QtCore.QObject):
             elif not self.printer_model.print_compatibility_check_enabled:
                 self.logger.info("Print compatibility check is disabled, skipping validation")
             
-            # Apply filament sensor state if print continues
-            self.apply_filament_sensor_state()
+            # Apply pellet sensor state if print continues
+            self.apply_pellet_sensor_state()
             
             # Navigate to home screen when print starts
             self.logger.info("Navigating to home screen after print started")
@@ -1022,7 +991,7 @@ class MainController(QtCore.QObject):
     def onPrintResumed(self, event):
         try:
             self.logger.info("MainController.onPrintResumed invoked")
-            self.apply_filament_sensor_state()
+            self.apply_pellet_sensor_state()
         except Exception as e:
             self.logger.error(f"Error in onPrintResumed: {e}")
 
@@ -1030,9 +999,9 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintPaused invoked")
             if self.octoprint_client:
-                # Immediately disable filament sensors when print is paused
-                self.octoprint_client.gcode(command='SET_FILAMENT_RUNOUT_SENSOR S=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_JAM_SENSOR S=0')
+                # Disable pellet sensors when print is paused (stops auto-refill)
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
         except Exception as e:
             self.logger.error(f"Error in onPrintPaused: {e}")
 
@@ -1040,9 +1009,9 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintCancelled invoked")
             if self.octoprint_client:
-                # Disable filament sensors immediately
-                self.octoprint_client.gcode(command='SET_FILAMENT_RUNOUT_SENSOR S=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_JAM_SENSOR S=0')
+                # Disable pellet sensors immediately
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:
@@ -1052,9 +1021,9 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintCompleted invoked")
             if self.octoprint_client:
-                # Disable filament sensors immediately
-                self.octoprint_client.gcode(command='SET_FILAMENT_RUNOUT_SENSOR S=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_JAM_SENSOR S=0')
+                # Disable pellet sensors immediately
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:

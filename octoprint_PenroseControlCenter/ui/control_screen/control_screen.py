@@ -58,8 +58,8 @@ class ControlScreen(QWidget):
         self.setFlowRateButton = self.findChild(QPushButton, "setFlowRateButton")
 
         # Preferences controls
-        self.toggleFilamentRunoutButton = self.findChild(QPushButton, "toggleFilamentRunoutButton")
-        self.toggleFilamentJamButton = self.findChild(QPushButton, "toggleFilamentJamButton")
+        self.togglePelletSensorT0Button = self.findChild(QPushButton, "togglePelletSensorT0Button")
+        self.togglePelletSensorT1Button = self.findChild(QPushButton, "togglePelletSensorT1Button")
         self.toggleAutoResumeButton = self.findChild(QPushButton, "toggleAutoResumeButton")
         self.toggleCheckPrintCompatibilityButton = self.findChild(QPushButton, "toggleCheckPrintCompatibilityButton")
         self.togglePrintRestoreButton = self.findChild(QPushButton, "togglePrintRestoreButton")
@@ -127,7 +127,7 @@ class ControlScreen(QWidget):
             self.moveYPButton, self.moveYMButton, self.flowRateSpinBox,
             self.setFlowRateButton, 
             self.tuneTab, self.temperatureTab, self.motionTab, self.preferencesTab,
-            self.toggleFilamentRunoutButton, self.toggleFilamentJamButton,
+            self.togglePelletSensorT0Button, self.togglePelletSensorT1Button,
             self.toggleAutoResumeButton, self.toggleCheckPrintCompatibilityButton,
             self.togglePrintRestoreButton
         ], "ControlScreen")
@@ -169,17 +169,17 @@ class ControlScreen(QWidget):
         if self.setH0TempButton:
             self.setH0TempButton.clicked.connect(self.setH0Temp)
         if self.H050PreheatButton:
-            self.H050PreheatButton.pressed.connect(lambda: self.preheatH0Temp(50))
+            self.H050PreheatButton.pressed.connect(lambda: self.preheatH0Temp(150))
         if self.H090PreheatButton:
-            self.H090PreheatButton.pressed.connect(lambda: self.preheatH0Temp(90))
+            self.H090PreheatButton.pressed.connect(lambda: self.preheatH0Temp(190))
 
         # Secondary Heater H1 signal connections (Penrose)
         if self.setH1TempButton:
             self.setH1TempButton.clicked.connect(self.setH1Temp)
         if self.H140PreheatButton:
-            self.H140PreheatButton.pressed.connect(lambda: self.preheatH1Temp(40))
+            self.H140PreheatButton.pressed.connect(lambda: self.preheatH1Temp(150))
         if self.H160PreheatButton:
-            self.H160PreheatButton.pressed.connect(lambda: self.preheatH1Temp(60))
+            self.H160PreheatButton.pressed.connect(lambda: self.preheatH1Temp(190))
 
         # Motion Buttons Signal Connections
         self.step1mmButton.clicked.connect(lambda: self.setStep(1))
@@ -198,12 +198,12 @@ class ControlScreen(QWidget):
         self.extruderButton.clicked.connect(lambda: self.octoprint_client.extrude(self.step))
         self.retractButton.clicked.connect(lambda: self.octoprint_client.extrude(-self.step))
 
-        # Filament Buttons Signal Connections
+        # Pellet Sensor Buttons Signal Connections
         self.setFlowRateButton.clicked.connect(self.setFlowRate)
 
-        self.toggleFilamentRunoutButton.clicked.connect(self.toggleFilamentRunout)
+        self.togglePelletSensorT0Button.clicked.connect(self.togglePelletSensorT0)
 
-        self.toggleFilamentJamButton.clicked.connect(self.toggleFilamentJam)
+        self.togglePelletSensorT1Button.clicked.connect(self.togglePelletSensorT1)
 
         # Preferences Signal Connections
         self.toggleAutoResumeButton.clicked.connect(self.toggleAutoResume)
@@ -227,12 +227,12 @@ class ControlScreen(QWidget):
 
         self.setStep(1)
 
-        # Reflect persistent filament sensor preferences in toggle buttons
+        # Reflect persistent pellet sensor preferences in toggle buttons
         try:
-            runout_enabled = bool(self.main_window.printer_model.filament_runout_sensor_persistent_state)
-            self.toggleFilamentRunoutButton.setChecked(runout_enabled)
-            jam_enabled = bool(self.main_window.printer_model.filament_jam_sensor_persistent_state)
-            self.toggleFilamentJamButton.setChecked(jam_enabled)
+            t0_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
+            self.togglePelletSensorT0Button.setChecked(t0_sensor_enabled)
+            t1_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t1_enabled)
+            self.togglePelletSensorT1Button.setChecked(t1_sensor_enabled)
             # Initialize print compatibility check button
             compatibility_enabled = bool(self.main_window.printer_model.print_compatibility_check_enabled)
             self.toggleCheckPrintCompatibilityButton.setChecked(compatibility_enabled)
@@ -635,29 +635,29 @@ class ControlScreen(QWidget):
             logger.error(f"Error updating ControlScreen UI for status {status}: {e}")
             dialog.WarningOk(self, f"Error updating ControlScreen UI for status {status}: {e}", overlay=True)
 
-    def toggleFilamentRunout(self):
-        """Toggle filament runout sensor persistent preference and apply live state."""
-        logger.info("ControlScreen.toggleFilamentRunout started")
+    def togglePelletSensorT0(self):
+        """Toggle T0 (Left) pellet level sensor persistent preference and apply live state."""
+        logger.info("ControlScreen.togglePelletSensorT0 started")
         try:
-            enabled = self.toggleFilamentRunoutButton.isChecked()
+            enabled = self.togglePelletSensorT0Button.isChecked()
             # Update model preference (persists)
-            self.main_window.printer_model.set_filament_runout_pref(enabled, persist=True)
-            # Apply immediate state depending on current print status
-            self.main_window.controller.apply_filament_sensor_state()
+            self.main_window.printer_model.set_pellet_sensor_t0_pref(enabled, persist=True)
+            # Apply immediate state to Klipper
+            self.main_window.controller.apply_pellet_sensor_state()
         except Exception as e:
-            logger.error(f"Error in ControlScreen.toggleFilamentRunout: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.toggleFilamentRunout: {e}", overlay=True)
+            logger.error(f"Error in ControlScreen.togglePelletSensorT0: {e}")
+            dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT0: {e}", overlay=True)
 
-    def toggleFilamentJam(self):
-        """Toggle filament jam sensor persistent preference and apply live state."""
-        logger.info("ControlScreen.toggleFilamentJam started")
+    def togglePelletSensorT1(self):
+        """Toggle T1 (Right) pellet level sensor persistent preference and apply live state."""
+        logger.info("ControlScreen.togglePelletSensorT1 started")
         try:
-            enabled = self.toggleFilamentJamButton.isChecked()
-            self.main_window.printer_model.set_filament_jam_pref(enabled, persist=True)
-            self.main_window.controller.apply_filament_sensor_state()
+            enabled = self.togglePelletSensorT1Button.isChecked()
+            self.main_window.printer_model.set_pellet_sensor_t1_pref(enabled, persist=True)
+            self.main_window.controller.apply_pellet_sensor_state()
         except Exception as e:
-            logger.error(f"Error in ControlScreen.toggleFilamentJam: {e}")
-            dialog.WarningOk(self, f"Error in ControlScreen.toggleFilamentJam: {e}", overlay=True)
+            logger.error(f"Error in ControlScreen.togglePelletSensorT1: {e}")
+            dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT1: {e}", overlay=True)
 
     def toggleAutoResume(self):
         """Toggle auto-resume on power outage"""

@@ -26,7 +26,7 @@ class PrinterModel(QObject):
     z_probe_offset_updated = pyqtSignal(str)  # ! done
     tool_offset_data = pyqtSignal(str)  # done
     printer_error_signal = pyqtSignal(str)  # done
-    filament_runout_state = pyqtSignal(str, bool)
+    pellet_sensor_state = pyqtSignal(str, bool)  # Pellet level sensor state (sensor_name, is_ok)
     z_probing_failed = pyqtSignal()  # done
     update_started_signal = pyqtSignal('PyQt_PyObject')
     update_log_signal = pyqtSignal('PyQt_PyObject')  # ! REMAINING
@@ -111,10 +111,10 @@ class PrinterModel(QObject):
             state = {"tools": {}, "preferences": {}}
         # Initialize tools from cached state
         self._init_tools_from_store(state.get("tools", {}))
-        # Filament sensor states & preferences
+        # Pellet sensor states & preferences (for Penrose pellet extruder)
         prefs = state.get("preferences", {})
-        self.filament_runout_sensor_persistent_state = bool(prefs.get("filament_runout_enabled", False))
-        self.filament_jam_sensor_persistent_state = bool(prefs.get("filament_jam_enabled", False))
+        self.pellet_sensor_t0_enabled = bool(prefs.get("pellet_sensor_t0_enabled", True))  # Default to enabled
+        self.pellet_sensor_t1_enabled = bool(prefs.get("pellet_sensor_t1_enabled", True))  # Default to enabled
         self.print_compatibility_check_enabled = bool(prefs.get("print_compatibility_check_enabled", True))  # Default to enabled
         
         # Print restore preferences
@@ -131,7 +131,7 @@ class PrinterModel(QObject):
         from utils.logger import set_advanced_debug_mode
         set_advanced_debug_mode(self.advanced_debugging_enabled)
         
-        self.filament_runout_state_map = {}  # {sensor: bool}
+        self.pellet_sensor_state_map = {}  # {sensor: bool}
         
         # Note: Printer configuration now managed by printer.cfg file directly
         # No need to store selected_printer_config in memory
@@ -143,26 +143,20 @@ class PrinterModel(QObject):
         # Ring heater power storage
         self.ring_heater_power = 0  # Default 0 (0-255 range)
 
-    # --- Filament sensor preference setters (called by controller/UI) -------
-    def set_filament_runout_pref(self, enabled: bool, persist: bool = True):
-        prev = self.filament_runout_sensor_persistent_state
-        self.filament_runout_sensor_persistent_state = bool(enabled)
-        try:
-            self.filament_runout_sensor_persistent_state.emit('1' if enabled else '0')  # type: ignore
-        except Exception:
-            pass
+    # --- Pellet sensor preference setters (called by controller/UI) -------
+    def set_pellet_sensor_t0_pref(self, enabled: bool, persist: bool = True):
+        """Set T0 (Left) pellet level sensor preference and persist if requested."""
+        prev = self.pellet_sensor_t0_enabled
+        self.pellet_sensor_t0_enabled = bool(enabled)
         if persist and prev != enabled:
-            self._config_store.set_preference('filament_runout_enabled', bool(enabled))
+            self._config_store.set_preference('pellet_sensor_t0_enabled', bool(enabled))
 
-    def set_filament_jam_pref(self, enabled: bool, persist: bool = True):
-        prev = self.filament_jam_sensor_persistent_state
-        self.filament_jam_sensor_persistent_state = bool(enabled)
-        try:
-            self.filament_jam_sensor_persistent_state.emit('1' if enabled else '0')  # type: ignore
-        except Exception:
-            pass
+    def set_pellet_sensor_t1_pref(self, enabled: bool, persist: bool = True):
+        """Set T1 (Right) pellet level sensor preference and persist if requested."""
+        prev = self.pellet_sensor_t1_enabled
+        self.pellet_sensor_t1_enabled = bool(enabled)
         if persist and prev != enabled:
-            self._config_store.set_preference('filament_jam_enabled', bool(enabled))
+            self._config_store.set_preference('pellet_sensor_t1_enabled', bool(enabled))
 
     def set_print_compatibility_check_pref(self, enabled: bool, persist: bool = True):
         """Set print compatibility check preference and persist if requested."""
@@ -419,15 +413,15 @@ class PrinterModel(QObject):
             self.logger.error("Error in PrinterModel.setToolOffset: {}".format(e))
             dialog.WarningOk(self, "Error in PrinterModel.setToolOffset: {}".format(e), overlay=True)
 
-    def filamentRunoutState(self, sensor, present):
+    def pelletSensorState(self, sensor, is_ok):
         """
-        Handles filament runout state events.
-        :param sensor: Sensor identifier.
-        :param present: Boolean indicating filament runout.
+        Handles pellet level sensor state events (Penrose pellet extruder).
+        :param sensor: Sensor identifier (e.g., 'pellet_sensor_left', 'pellet_sensor_right').
+        :param is_ok: Boolean indicating pellet level is OK (True) or LOW (False).
         """
         # Store in map for UI access
-        self.filament_runout_state_map[sensor] = bool(present)
-        self.filament_runout_state.emit(sensor, present)
+        self.pellet_sensor_state_map[sensor] = bool(is_ok)
+        self.pellet_sensor_state.emit(sensor, is_ok)
 
     # Use the softwareUpdateProgress function to send data about software updates
     def softwareUpdateProgress(self, update_info):

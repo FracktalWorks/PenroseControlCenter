@@ -1991,7 +1991,7 @@ QPushButton:focus {
 }</string>
           </property>
           <property name="text">
-           <string>50°C</string>
+           <string>150°C</string>
           </property>
           <property name="iconSize">
            <size>
@@ -2060,7 +2060,7 @@ QPushButton:focus {
 }</string>
           </property>
           <property name="text">
-           <string>90°C</string>
+           <string>190°C</string>
           </property>
           <property name="iconSize">
            <size>
@@ -2369,7 +2369,7 @@ QPushButton:focus {
 }</string>
           </property>
           <property name="text">
-           <string>40°C</string>
+           <string>150°C</string>
           </property>
           <property name="iconSize">
            <size>
@@ -2438,7 +2438,7 @@ QPushButton:focus {
 }</string>
           </property>
           <property name="text">
-           <string>60°C</string>
+           <string>190°C</string>
           </property>
           <property name="iconSize">
            <size>
@@ -3992,12 +3992,12 @@ QScrollBar::down-arrow:vertical {
 background-color: rgba(255, 255, 255, 0);</string>
               </property>
               <property name="text">
-               <string>Filament Runout Sensor</string>
+               <string>T0 Pellet Level Sensor</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="toggleFilamentRunoutButton">
+             <widget class="QPushButton" name="togglePelletSensorT0Button">
               <property name="sizePolicy">
                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                 <horstretch>0</horstretch>
@@ -4078,12 +4078,12 @@ QPushButton:default {
 background-color: rgba(255, 255, 255, 0);</string>
               </property>
               <property name="text">
-               <string>Filament Jam Sensor</string>
+               <string>T1 Pellet Level Sensor</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="toggleFilamentJamButton">
+             <widget class="QPushButton" name="togglePelletSensorT1Button">
               <property name="sizePolicy">
                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                 <horstretch>0</horstretch>
