@@ -56,6 +56,9 @@ class OctoPrintWebSocket(QThread):
     filament_jam_sensor_triggered_signal = pyqtSignal(str) #! done
     filament_runout_state_signal = pyqtSignal(str, bool) #! done
     
+    # Pellet sensor signals
+    pellet_outage_signal = pyqtSignal(str)  # Emits tool ("0" or "1") when pellet supply exhausted
+    
     # Position update signals
     current_position_updated_signal = pyqtSignal(dict)  # {'x': float, 'y': float, 'z': float}
     
@@ -508,6 +511,17 @@ class OctoPrintWebSocket(QThread):
                                         self.filament_jam_sensor_triggered_signal.emit(tool)
                                     except Exception as e:
                                         self.logger.error(f"Error emitting filament_jam_sensor_triggered_signal: {e}")
+                                
+                                # Pellet outage detection - "Pellet Outage T0" or "Pellet Outage T1"
+                                elif 'Pellet Outage T' in item:
+                                    # Find "Outage T" to get the correct T position
+                                    outage_idx = item.index('Outage T')
+                                    tool = item[outage_idx + 8:outage_idx + 9]  # Get the digit after "Outage T"
+                                    self.logger.warning(f"Pellet outage detected on tool {tool}")
+                                    try:
+                                        self.pellet_outage_signal.emit(tool)
+                                    except Exception as e:
+                                        self.logger.error(f"Error emitting pellet_outage_signal: {e}")
                                 
                                 elif 'filament detected' in item:
                                     sensor = item[item.index('T') + 1:].split(' ', 1)[0]

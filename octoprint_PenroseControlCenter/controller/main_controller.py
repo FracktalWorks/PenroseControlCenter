@@ -280,6 +280,7 @@ class MainController(QtCore.QObject):
         self.printer_model.klipper_state_changed.connect(self.onKlipperStateChanged)
         # Pellet sensor signals (Penrose pellet extruder uses pellet level sensors, not filament sensors)
         self.octoprint_websocket.filament_runout_sensor_triggered_signal.connect(self.pelletSensorLowTriggered)
+        self.octoprint_websocket.pellet_outage_signal.connect(self.onPelletOutage)
         # Note: filament_jam_sensor_triggered_signal not used for pellet extruder
         self.printer_model.pellet_sensor_state.connect(self.onPelletSensorState)
         self.octoprint_websocket.z_probing_failed_signal.connect(self.showProbingFailed)
@@ -641,6 +642,27 @@ class MainController(QtCore.QObject):
         self.logger.info(f"Pellet level low detected on {tool}")
         # Note: Auto-refill is handled by the Klipper firmware macros
         # No action needed from the UI - the vacuum will automatically refill
+
+    def onPelletOutage(self, tool):
+        """Handle pellet outage event - pellet supply exhausted after 60 second timeout.
+        
+        This is a critical event - the print has been paused by the firmware.
+        Show a dialog to alert the user to refill pellets and resume.
+        """
+        self.logger.warning(f"Pellet outage detected on T{tool} - print paused!")
+        try:
+            tool_name = "Left (T0)" if tool == "0" else "Right (T1)"
+            dialog.WarningOk(
+                self.main_window, 
+                f"Pellet Supply Empty - {tool_name}\n\n"
+                "The hopper did not refill within 60 seconds.\n"
+                "Print has been paused.\n\n"
+                "Please check and refill the pellet supply,\n"
+                "then press RESUME to continue printing.",
+                overlay=True
+            )
+        except Exception as e:
+            self.logger.error(f"Error showing pellet outage dialog: {e}")
 
     def onPelletSensorState(self, sensor, state):
         """Handle pellet sensor state changes for logging."""
