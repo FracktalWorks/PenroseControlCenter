@@ -64,12 +64,14 @@ Unlike traditional filament printers, Penrose uses **pellet feeders** that trans
 #### 1. Line Vac Solenoid Valves
 Solenoid valves control pneumatic flow for pellet transport:
 ```
-T0 Solenoid: PD14 (output_pin linevac_T0)
-T1 Solenoid: PE9 (output_pin linevac_T1)
+T0 Solenoid: PD14 (output_pin pellet_vac_left)
+T1 Solenoid: PD15 (output_pin pellet_vac_right) - Changed from PE9 to avoid boot activation
 
-Logic: Active-LOW relays
-- VALUE=0 → Valve OPEN → Pellets flowing
-- VALUE=1 → Valve CLOSED → No flow
+Logic: Active-LOW relays with pin inversion (!)
+- VALUE=1 → Valve OPEN → Pellets flowing
+- VALUE=0 → Valve CLOSED → No flow
+
+MUTUAL EXCLUSION: Only one vac can be on at a time
 ```
 
 #### 2. Capacitive Pellet Level Sensors
