@@ -435,9 +435,9 @@ class filamentManagementScreen(QWidget):
         self._vac_button.setMinimumHeight(60)
         
         def on_vac_pressed():
-            """Turn on vac when button pressed"""
+            """Turn on vac when button pressed (VALUE=1 = relay ON with inverted pin)"""
             try:
-                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
+                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=1')
                 self._vac_button.setText("Loading... (Release to Stop)")
                 self._pellet_vac_on = True
                 self.logger.info(f"Line vac ON for {tool}")
@@ -445,9 +445,9 @@ class filamentManagementScreen(QWidget):
                 self.logger.error(f"Failed to turn on line vac: {e}")
         
         def on_vac_released():
-            """Turn off vac when button released and refresh sensor status"""
+            """Turn off vac when button released (VALUE=0 = relay OFF with inverted pin)"""
             try:
-                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=1')
+                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
                 self._vac_button.setText("Hold to Load Pellets")
                 self._vac_button.setChecked(False)
                 self._pellet_vac_on = False
@@ -470,11 +470,11 @@ class filamentManagementScreen(QWidget):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
         
-        # Ensure vac is off when dialog closes
+        # Ensure vac is off when dialog closes (VALUE=0 = relay OFF with inverted pin)
         def on_dialog_finished():
             if self._pellet_vac_on:
                 try:
-                    self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=1')
+                    self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
                     self.logger.info(f"Line vac OFF (dialog closed) for {tool}")
                 except Exception as e:
                     self.logger.error(f"Failed to turn off line vac on close: {e}")
