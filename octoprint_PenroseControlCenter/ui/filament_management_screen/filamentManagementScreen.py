@@ -10,10 +10,9 @@ from utils.printer_ui_config import apply_nozzle_config_to_screen
 from utils import dialog
 from utils import styles
 import config
-from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QFormLayout, QComboBox
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QFormLayout, QComboBox, QHBoxLayout
 
-# Import sub-screens
-from ui.filament_management_screen.changeFilamentWizard.changeFilamentWizard import ChangeFilamentWizard
+# Import sub-screens (only nozzle change wizard needed now)
 from ui.filament_management_screen.nozzleChangeWizard.nozzleChangeWizard import NozzleChangeWizard
 
 logger = get_logger(__name__)
@@ -85,13 +84,9 @@ class filamentManagementScreen(QWidget):
         self.screens = {}
         self._initialize_sub_screens()
 
-        # Connect buttons to their respective methods (no bay parameter anymore)
-        self.changeTool0MaterialBayA.clicked.connect(
-            lambda: self.show_material_nozzle_screen(target_screen="filament_change", params={"tool": "tool0"})
-        )
-        self.changeTool1MaterialBayX.clicked.connect(
-            lambda: self.show_material_nozzle_screen(target_screen="filament_change", params={"tool": "tool1"})
-        )
+        # Connect material buttons to pellet loading dialog (replaces filament change wizard)
+        self.changeTool0MaterialBayA.clicked.connect(lambda: self._show_pellet_load_dialog("tool0"))
+        self.changeTool1MaterialBayX.clicked.connect(lambda: self._show_pellet_load_dialog("tool1"))
 
         self.changeTool0Button.clicked.connect(
             lambda: self.show_material_nozzle_screen(target_screen="nozzle_change", params={"tool": "tool0"})
@@ -112,12 +107,15 @@ class filamentManagementScreen(QWidget):
         self.material_nozzle_stacked_widget.setCurrentWidget(self.main_material_nozzle_page)
         self.logger.debug("Set current widget to mainMaterialNozzlePage")
         self._loading_dialog = None
+        
         # Bind to printer model signals for state updates
         try:
             self.main_window.printer_model.tool_bay_states_loaded.connect(self._on_tool_states_loaded)
             self.main_window.printer_model.tool_bay_state_changed.connect(self._on_tool_state_changed)
             # Also react to printer status to enable/disable change buttons
             self.main_window.printer_model.status_updated.connect(self._on_status_updated)
+            # Connect to pellet sensor state signal for real-time updates
+            self.main_window.printer_model.pellet_sensor_state.connect(self._on_pellet_sensor_state)
         except Exception as e:
             self.logger.error(f"Failed connecting tool state signals: {e}")
         # Apply current state immediately in case the signal fired before this screen connected
@@ -159,14 +157,15 @@ class filamentManagementScreen(QWidget):
         try:
             self.material_nozzle_stacked_widget.setCurrentWidget(self.main_material_nozzle_page)
             self.logger.debug("Reset stacked widget to main_material_nozzle_page on show")
+            # Poll pellet sensors when screen is shown
+            self._poll_pellet_sensors()
         except Exception as e:
-            self.logger.error(f"Error resetting to main_material_nozzle_page: {e}")
+            self.logger.error(f"Error in showEvent: {e}")
 
     def _initialize_sub_screens(self):
         """Initialize all filament/nozzle sub-screens"""
         try:
-            # Create instances of each sub-screen
-            self.screens["filament_change"] = ChangeFilamentWizard(self.main_window)
+            # Only nozzle change wizard needed - pellet loading uses a dialog
             self.screens["nozzle_change"] = NozzleChangeWizard(self.main_window)
 
             # Add each screen to the stacked widget
@@ -301,6 +300,188 @@ class filamentManagementScreen(QWidget):
         # For now, reflect only primary bay changes on screen
         if bay == self.main_window.printer_model.get_default_bay(tool):
             self._apply_tool_ui(tool, data)
+
+    # --- Pellet Sensor Polling & Display ---
+    def _poll_pellet_sensors(self):
+        """Poll the pellet sensor states by sending QUERY_FILAMENT_SENSOR commands.
+        
+        Sends G-code commands to Klipper to query the pellet sensor states.
+        The responses are parsed by the websocket client and update the
+        pellet_sensor_state_map in printer_model.
+        """
+        try:
+            # Send query commands to Klipper - responses are parsed by websocket_client
+            self.octoprint_client.gcode(
+                command='QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_left\n'
+                        'QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_right'
+            )
+            self.logger.debug("Sent pellet sensor query commands")
+            
+            # Also update UI from current state map (may have been updated by previous responses)
+            model = self.main_window.printer_model
+            sensor_map = getattr(model, 'pellet_sensor_state_map', {})
+            
+            # Get sensor states (True = pellets detected, False = empty)
+            left_detected = sensor_map.get('pellet_sensor_left', None)
+            right_detected = sensor_map.get('pellet_sensor_right', None)
+            
+            # Update UI for tool0 (left)
+            self._update_pellet_sensor_display("tool0", left_detected)
+            # Update UI for tool1 (right)
+            self._update_pellet_sensor_display("tool1", right_detected)
+            
+            self.logger.debug(f"Pellet sensors state - Left: {left_detected}, Right: {right_detected}")
+        except Exception as e:
+            self.logger.error(f"Error polling pellet sensors: {e}")
+
+    def _on_pellet_sensor_state(self, sensor: str, is_ok: bool):
+        """Handle real-time pellet sensor state changes from printer_model signal.
+        
+        Args:
+            sensor: Sensor name ('pellet_sensor_left' or 'pellet_sensor_right')
+            is_ok: True if pellets detected, False if empty
+        """
+        try:
+            if sensor == 'pellet_sensor_left':
+                self._update_pellet_sensor_display("tool0", is_ok)
+            elif sensor == 'pellet_sensor_right':
+                self._update_pellet_sensor_display("tool1", is_ok)
+            self.logger.debug(f"Pellet sensor state changed - {sensor}: {is_ok}")
+        except Exception as e:
+            self.logger.error(f"Error handling pellet sensor state: {e}")
+
+    def _update_pellet_sensor_display(self, tool: str, pellets_detected):
+        """Update the UI to show pellet sensor state for a given tool.
+        
+        Args:
+            tool: "tool0" or "tool1"
+            pellets_detected: True if pellets present, False if empty, None if unknown
+        """
+        if pellets_detected is None:
+            status_text = "Unknown"
+            status_style = styles.printer_status_red
+        elif pellets_detected:
+            status_text = "Pellets OK"
+            status_style = styles.printer_status_green
+        else:
+            status_text = "Empty"
+            status_style = styles.printer_status_amber
+        
+        if tool == "tool0":
+            if self.tool0MaterialBayAStateLabel:
+                self.tool0MaterialBayAStateLabel.setText(status_text)
+            if self.tool0MaterialBayAStateColor:
+                self.tool0MaterialBayAStateColor.setStyleSheet(status_style)
+        elif tool == "tool1":
+            if self.tool1MaterialBayXStateLabel:
+                self.tool1MaterialBayXStateLabel.setText(status_text)
+            if self.tool11MaterialBayXStateColor:
+                self.tool11MaterialBayXStateColor.setStyleSheet(status_style)
+
+    # --- Pellet Loading Dialog ---
+    def _show_pellet_load_dialog(self, tool: str):
+        """Show a dialog to control the line vac for loading pellets into the hopper.
+        
+        Args:
+            tool: "tool0" or "tool1"
+        """
+        tool_num = "0" if tool == "tool0" else "1"
+        tool_name = "Left (T0)" if tool == "tool0" else "Right (T1)"
+        vac_pin = "pellet_vac_left" if tool == "tool0" else "pellet_vac_right"
+        
+        self.logger.info(f"Opening pellet load dialog for {tool}")
+        
+        # Track vac state
+        self._pellet_vac_on = False
+        
+        # Create dialog
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Load Pellets - {tool_name}")
+        dlg.setMinimumSize(400, 200)
+        dlg.setModal(True)
+        
+        # Apply styling
+        base_font = dialog.font(size=14)
+        dlg.setFont(base_font)
+        dlg.setStyleSheet("""
+            QDialog { background-color: #2b2b2b; color: #ffffff; }
+            QLabel { color: #ffffff; font-size: 14px; }
+            QPushButton { 
+                background-color: #3d3d3d; 
+                color: #ffffff; 
+                border: 1px solid #555555; 
+                border-radius: 8px; 
+                padding: 15px 30px;
+                font-size: 14px;
+                min-width: 120px;
+            }
+            QPushButton:hover { background-color: #4d4d4d; }
+            QPushButton:pressed { background-color: #5d5d5d; }
+            QPushButton:checked { background-color: #4CAF50; border-color: #4CAF50; }
+        """)
+        
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(20)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Instructions
+        instructions = QLabel(f"Press and hold the button below to turn on\nthe line vac and load pellets into {tool_name}.")
+        instructions.setAlignment(Qt.AlignCenter)
+        layout.addWidget(instructions)
+        
+        # Toggle button for line vac
+        self._vac_button = QPushButton("Hold to Load Pellets")
+        self._vac_button.setCheckable(True)
+        self._vac_button.setMinimumHeight(60)
+        
+        def on_vac_pressed():
+            """Turn on vac when button pressed"""
+            try:
+                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
+                self._vac_button.setText("Loading... (Release to Stop)")
+                self._pellet_vac_on = True
+                self.logger.info(f"Line vac ON for {tool}")
+            except Exception as e:
+                self.logger.error(f"Failed to turn on line vac: {e}")
+        
+        def on_vac_released():
+            """Turn off vac when button released and refresh sensor status"""
+            try:
+                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=1')
+                self._vac_button.setText("Hold to Load Pellets")
+                self._vac_button.setChecked(False)
+                self._pellet_vac_on = False
+                self.logger.info(f"Line vac OFF for {tool}")
+                # Poll sensors after loading to update status
+                self._poll_pellet_sensors()
+            except Exception as e:
+                self.logger.error(f"Failed to turn off line vac: {e}")
+        
+        self._vac_button.pressed.connect(on_vac_pressed)
+        self._vac_button.released.connect(on_vac_released)
+        layout.addWidget(self._vac_button)
+        
+        # Done button
+        btn_layout = QHBoxLayout()
+        done_btn = QPushButton("Done")
+        done_btn.clicked.connect(dlg.accept)
+        btn_layout.addStretch()
+        btn_layout.addWidget(done_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+        
+        # Ensure vac is off when dialog closes
+        def on_dialog_finished():
+            if self._pellet_vac_on:
+                try:
+                    self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=1')
+                    self.logger.info(f"Line vac OFF (dialog closed) for {tool}")
+                except Exception as e:
+                    self.logger.error(f"Failed to turn off line vac on close: {e}")
+        
+        dlg.finished.connect(on_dialog_finished)
+        
+        dlg.exec_()
 
     # --- New: Edit dialog to sync reality without wizard ---
     def _open_edit_dialog(self, tool: str):

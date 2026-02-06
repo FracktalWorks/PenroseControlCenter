@@ -523,6 +523,23 @@ class OctoPrintWebSocket(QThread):
                                     except Exception as e:
                                         self.logger.error(f"Error emitting pellet_outage_signal: {e}")
                                 
+                                # QUERY_FILAMENT_SENSOR response parsing for pellet sensors
+                                # Format: "Filament Sensor pellet_sensor_left: filament detected"
+                                # or: "Filament Sensor pellet_sensor_right: filament not detected"
+                                elif 'Filament Sensor pellet_sensor_' in item:
+                                    try:
+                                        # Extract sensor name
+                                        sensor_match = re.search(r'Filament Sensor (pellet_sensor_\w+):', item)
+                                        if sensor_match:
+                                            sensor_name = sensor_match.group(1)
+                                            is_detected = 'filament detected' in item and 'not detected' not in item
+                                            self.logger.info(f"Pellet sensor query response - {sensor_name}: {'detected' if is_detected else 'not detected'}")
+                                            # Update printer model via pelletSensorState
+                                            if self.printer_model:
+                                                self.printer_model.pelletSensorState(sensor_name, is_detected)
+                                    except Exception as e:
+                                        self.logger.error(f"Error parsing pellet sensor query response: {e}")
+                                
                                 elif 'filament detected' in item:
                                     sensor = item[item.index('T') + 1:].split(' ', 1)[0]
                                     self.logger.info(f"Filament detected in {sensor}")
