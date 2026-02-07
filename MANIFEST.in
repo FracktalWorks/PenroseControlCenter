@@ -5,5 +5,7 @@ recursive-include octoprint_PenroseControlCenter/firmware *
 recursive-include octoprint_PenroseControlCenter/models *
 recursive-include octoprint_PenroseControlCenter/octoprint_client *
 recursive-include octoprint_PenroseControlCenter/utils *
+recursive-include octoprint_PenroseControlCenter/templates *
+recursive-include octoprint_PenroseControlCenter/static *
 include versioneer.py
 include octoprint_PenroseControlCenter/_version.py

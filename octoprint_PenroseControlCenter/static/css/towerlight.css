@@ -1,0 +1,80 @@
+/* Tower Light Status Indicator Styles */
+
+#navbar_PenroseControlCenter {
+    display: inline-block;
+}
+
+#navbar_PenroseControlCenter > #machine_state {
+    background-color: transparent !important;
+    background-image: none !important;
+    font-size: 0 !important;
+
+    display: inline-block;
+    vertical-align: middle;
+    margin: 7px;
+    margin-bottom: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    border: 1px solid #999;
+}
+
+#settings_PenroseControlCenter #settings_machine_state {
+    background-color: transparent !important;
+    background-image: none !important;
+    font-size: 0 !important;
+
+    display: inline-block;
+    margin: 0px;
+    height: 40px;
+    width: 40px;
+    border-radius: 4px;
+    border: 1px solid #999;
+}
+
+/* Red - Offline state */
+#navbar_PenroseControlCenter > #machine_state.red,
+#settings_PenroseControlCenter #settings_machine_state.red {
+    background-color: #cc0605 !important;
+}
+
+/* Yellow - Paused state */
+#navbar_PenroseControlCenter > #machine_state.yellow,
+#settings_PenroseControlCenter #settings_machine_state.yellow {
+    background-color: #ffbf00 !important;
+}
+
+/* Green - Printing state */
+#navbar_PenroseControlCenter > #machine_state.green,
+#settings_PenroseControlCenter #settings_machine_state.green {
+    background-color: #33a532 !important;
+}
+
+/* Blue - Operational state */
+#navbar_PenroseControlCenter > #machine_state.blue,
+#settings_PenroseControlCenter #settings_machine_state.blue {
+    background-color: #00b6ff !important;
+}
+
+/* Door Lock Status Indicator Styles */
+#navbar_PenroseControlCenter > #door_state {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 7px;
+    margin-bottom: 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+#navbar_PenroseControlCenter > #door_state.door-locked {
+    color: #c09853;
+}
+
+#navbar_PenroseControlCenter > #door_state.door-unlocked {
+    color: #468847;
+}
+
+#navbar_PenroseControlCenter > #door_state i {
+    font-size: 16px;
+}

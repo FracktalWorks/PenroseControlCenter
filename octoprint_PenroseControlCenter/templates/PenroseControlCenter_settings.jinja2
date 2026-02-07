@@ -1,0 +1,92 @@
+<div id="settings_PenroseControlCenter">
+    <h3>{{ _('Penrose Control Center') }}</h3>
+    <hr/>
+
+    <form class="form-horizontal">
+        {# Tower Light Settings #}
+        <h4>{{ _('Tower Light') }}</h4>
+        
+        <div class="control-group">
+            <label class="control-label">{{ _('Tower Light') }}</label>
+            <div class="controls">
+                <select class="select-mini" data-bind="value: Config.tower_enabled">
+                    <option value=0>{{ _('Disabled') }}</option>
+                    <option value=1>{{ _('Enabled') }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: towerEnabled()">
+            <label class="control-label">{{ _('Strobe') }}</label>
+            <div class="controls">
+                <select class="select-mini" data-bind="value: Config.strobe">
+                    <option value=0>{{ _('Disabled') }}</option>
+                    <option value=1>{{ _('Enabled') }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: (towerEnabled() && strobeEnabled())">
+            <label class="control-label">{{ _('ON delay (ms)') }}</label>
+            <div class="controls">
+                <input type="number" step="50" min="50" max="5000" class="input-mini text-right" data-bind="value: Config.delay_on">
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: (towerEnabled() && strobeEnabled())">
+            <label class="control-label">{{ _('OFF delay (ms)') }}</label>
+            <div class="controls">
+                <input type="number" step="50" min="50" max="5000" class="input-mini text-right" data-bind="value: Config.delay_off">
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: towerEnabled()">
+            <label class="control-label">{{ _('Current State') }}</label>
+            <div class="controls">
+                <span class="" id="settings_machine_state"></span>
+            </div>
+        </div>
+
+        <hr/>
+
+        {# Door Lock Settings #}
+        <h4>{{ _('Door Lock') }}</h4>
+
+        <div class="control-group">
+            <label class="control-label">{{ _('Door Lock') }}</label>
+            <div class="controls">
+                <select class="select-mini" data-bind="value: Config.door_lock_enabled">
+                    <option value=0>{{ _('Disabled') }}</option>
+                    <option value=1>{{ _('Enabled') }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: doorLockEnabled()">
+            <label class="control-label">{{ _('Auto Lock on Print') }}</label>
+            <div class="controls">
+                <select class="select-mini" data-bind="value: Config.auto_lock_on_print">
+                    <option value=0>{{ _('Disabled') }}</option>
+                    <option value=1>{{ _('Enabled') }}</option>
+                </select>
+                <span class="help-block">{{ _('Automatically lock door when print starts and unlock when print ends') }}</span>
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: doorLockEnabled()">
+            <label class="control-label">{{ _('Door Status') }}</label>
+            <div class="controls">
+                <span class="label" data-bind="text: doorStateText(), css: doorStateCss()"></span>
+            </div>
+        </div>
+
+        <div class="control-group" data-bind="visible: doorLockEnabled()">
+            <label class="control-label">{{ _('Manual Control') }}</label>
+            <div class="controls">
+                <button class="btn" data-bind="click: toggleDoorLock">
+                    <i class="icon-lock"></i> {{ _('Toggle Lock') }}
+                </button>
+            </div>
+        </div>
+    </form>
+</div>

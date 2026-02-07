@@ -895,9 +895,35 @@ class octoprintAPI:
 
     def overrideDoorLock(self):
         """
-        locks and unlocks the front door, needs Volterra plugin installed
+        Toggles the front door lock via PenroseControlCenter plugin API
         """
-        url = 'http://' + self.ip + '/plugin/VolterraServices/lock_override'
+        url = 'http://' + self.ip + '/plugin/PenroseControlCenter/lock_override'
         headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
         temp = requests.get(url, headers=headers)
         return temp
+
+    def getDoorLockStatus(self):
+        """
+        Gets the current door lock status from PenroseControlCenter plugin
+        Returns dict with door_lock_enabled and door_state
+        """
+        url = 'http://' + self.ip + '/plugin/PenroseControlCenter/door_status'
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        temp = requests.get(url, headers=headers)
+        return temp.json() if temp.status_code == 200 else None
+
+    def lockDoor(self):
+        """
+        Locks the front door via PenroseControlCenter plugin API
+        """
+        url = 'http://' + self.ip + '/plugin/PenroseControlCenter/lock_door'
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        return requests.get(url, headers=headers)
+
+    def unlockDoor(self):
+        """
+        Unlocks the front door via PenroseControlCenter plugin API
+        """
+        url = 'http://' + self.ip + '/plugin/PenroseControlCenter/unlock_door'
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        return requests.get(url, headers=headers)

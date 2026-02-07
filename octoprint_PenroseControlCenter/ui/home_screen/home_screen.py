@@ -481,16 +481,15 @@ class HomeScreen(QWidget):
 
     def toggle_door_lock(self):
         """
-        function that toggles locking and unlocking the front door
-        :return:
+        Toggle the front door lock via PenroseControlCenter plugin API
         """
-        self.logger.info("HomeScreen.doorLock started")
+        self.logger.info("HomeScreen.toggle_door_lock started")
         try:
-            self.octoprint_client.gcode(command='DoorToggle')
             self.octoprint_client.overrideDoorLock()
+            self.logger.info("Door lock toggled successfully")
         except Exception as e:
-            self.logger.error("Error in HomeScreen.doorLock: {}".format(e))
-            dialog.WarningOk(self, "Error in HomeScreen.doorLock: {}".format(e), overlay=True)
+            self.logger.error("Error in HomeScreen.toggle_door_lock: {}".format(e))
+            dialog.WarningOk(self, "Error toggling door lock: {}".format(e), overlay=True)
 
     def open_menu(self):
         """Navigate to menu screen"""
