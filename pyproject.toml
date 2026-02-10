@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "versioneer[toml]"]
+build-backend = "setuptools.build_meta"
+
+[tool.versioneer]
+VCS = "git"
+style = "pep440"
+versionfile_source = "octoprint_PenroseControlCenter/_version.py"
+versionfile_build = ""
+tag_prefix = ""
+parentdir_prefix = ""
