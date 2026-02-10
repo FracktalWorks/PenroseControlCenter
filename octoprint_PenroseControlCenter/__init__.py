@@ -92,7 +92,6 @@ class StrobeLED(threading.Thread):
 
 
 class PenroseControlCenter(octoprint.plugin.StartupPlugin,
-                           octoprint.plugin.SoftwareUpdatePlugin,
                            octoprint.plugin.EventHandlerPlugin,
                            octoprint.plugin.TemplatePlugin,
                            octoprint.plugin.SettingsPlugin,
