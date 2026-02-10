@@ -93,7 +93,6 @@ class StrobeLED(threading.Thread):
 
 
 class PenroseControlCenter(octoprint.plugin.StartupPlugin,
-                           octoprint.plugin.SoftwareUpdatePlugin,
                            octoprint.plugin.EventHandlerPlugin,
                            octoprint.plugin.TemplatePlugin,
                            octoprint.plugin.SettingsPlugin,
@@ -469,6 +468,9 @@ sudo python3 main.py
             except FileNotFoundError:
                 needs_update = True
                 self._logger.info("xinit file does not exist, will create it")
+            except PermissionError as e:
+                self._logger.error(f"Permission denied reading xinit file: {e}")
+                return
             except IOError as e:
                 self._logger.error(f"Error reading xinit file: {e}")
                 return
@@ -486,7 +488,8 @@ sudo python3 main.py
                         ["sudo", "cp", temp_file, xinit_file], 
                         check=True, 
                         capture_output=True, 
-                        text=True
+                        text=True,
+                        timeout=15
                     )
                     
                     # Set proper permissions
@@ -494,7 +497,8 @@ sudo python3 main.py
                         ["sudo", "chmod", "755", xinit_file], 
                         check=True, 
                         capture_output=True, 
-                        text=True
+                        text=True,
+                        timeout=15
                     )
                     
                     # Clean up temp file
@@ -503,8 +507,9 @@ sudo python3 main.py
                     
                     self._logger.info(f"Successfully updated xinit file with PenroseControlCenter path: {plugin_dir}")
                     
-                    # Restart the X session with the new xinit configuration
-                    self._restart_touch_ui()
+                    # Restart the X session with the new xinit configuration (in background to not block startup)
+                    restart_thread = threading.Thread(target=self._restart_touch_ui, daemon=True)
+                    restart_thread.start()
                     
                 except subprocess.CalledProcessError as e:
                     self._logger.error(f"Failed to update xinit file: {e}")
@@ -512,6 +517,8 @@ sudo python3 main.py
                         self._logger.error(f"Command stderr: {e.stderr}")
                     if e.stdout:
                         self._logger.error(f"Command stdout: {e.stdout}")
+                except subprocess.TimeoutExpired as e:
+                    self._logger.error(f"Timeout running sudo command for xinit file: {e}")
                 except OSError as e:
                     self._logger.error(f"OS error when updating xinit file: {e}")
                 except Exception as e:
@@ -537,22 +544,25 @@ sudo python3 main.py
             # First, try to kill any existing X sessions
             try:
                 # Kill existing X sessions gracefully
-                subprocess.run(
+                result = subprocess.run(
                     ["sudo", "pkill", "-f", "startx"], 
                     capture_output=True, 
                     text=True,
                     timeout=10
                 )
-                self._logger.info("Terminated existing X sessions")
+                if result.returncode == 0:
+                    self._logger.info("Terminated existing X sessions")
+                else:
+                    # pkill returns 1 when no processes matched
+                    self._logger.info("No existing X sessions found to terminate")
                 
                 # Give it a moment to clean up
                 time.sleep(2)
                 
-            except subprocess.CalledProcessError:
-                # It's okay if there are no existing X sessions to kill
-                self._logger.info("No existing X sessions found to terminate")
             except subprocess.TimeoutExpired:
                 self._logger.warning("Timeout while trying to terminate X sessions")
+            except Exception as e:
+                self._logger.warning(f"Error terminating X sessions: {e}")
             
             # Start the new X session with startx
             # Use Popen to start it in the background since startx is a long-running process
