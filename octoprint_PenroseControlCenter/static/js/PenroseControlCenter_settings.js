@@ -22,6 +22,11 @@ $(function() {
             return self.doorState() === "locked" ? "label-warning" : "label-success";
         });
 
+        // Helper function to check enabled state (handles string/number/boolean)
+        var isEnabled = function(value) {
+            return value == 1 || value === "1" || value === true;
+        };
+
         self.onBeforeBinding = function() {
             console.log('Binding VM_PenroseControlCenter_settings');
 
@@ -29,22 +34,22 @@ $(function() {
 
             // Tower Light subscriptions
             self.Config.tower_enabled.subscribe(function(value) {
-                self.towerEnabled(value == 1);
+                self.towerEnabled(isEnabled(value));
             });
             self.Config.strobe.subscribe(function(value) {
-                self.strobeEnabled(value == 1);
+                self.strobeEnabled(isEnabled(value));
             });
 
             // Door Lock subscriptions
             self.Config.door_lock_enabled.subscribe(function(value) {
-                self.doorLockEnabled(value == 1);
+                self.doorLockEnabled(isEnabled(value));
             });
         };
 
         self.onSettingsShown = function() {
-            self.towerEnabled(self.Config.tower_enabled() == 1);
-            self.strobeEnabled(self.Config.strobe() == 1);
-            self.doorLockEnabled(self.Config.door_lock_enabled() == 1);
+            self.towerEnabled(isEnabled(self.Config.tower_enabled()));
+            self.strobeEnabled(isEnabled(self.Config.strobe()));
+            self.doorLockEnabled(isEnabled(self.Config.door_lock_enabled()));
 
             // Fetch current door status
             $.ajax({

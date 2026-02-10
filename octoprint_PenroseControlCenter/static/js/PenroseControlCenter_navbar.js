@@ -18,7 +18,7 @@ $(function() {
         });
 
         self.doorIconCss = ko.computed(function() {
-            return self.doorState() === "locked" ? "icon-lock" : "icon-unlock";
+            return self.doorState() === "locked" ? "fa fa-lock" : "fa fa-unlock";
         });
 
         self.onBeforeBinding = function() {
@@ -26,17 +26,17 @@ $(function() {
 
             self.Config = self.VM_settings.settings.plugins.PenroseControlCenter;
 
-            // Tower Light subscriptions
+            // Tower Light subscriptions - handle both string and number values
             self.Config.tower_enabled.subscribe(function(value) {
-                self.towerEnabled(value == 1);
+                self.towerEnabled(value == 1 || value === "1" || value === true);
             });
-            self.towerEnabled(self.Config.tower_enabled() == 1);
+            self.towerEnabled(self.Config.tower_enabled() == 1 || self.Config.tower_enabled() === "1" || self.Config.tower_enabled() === true);
 
-            // Door Lock subscriptions
+            // Door Lock subscriptions - handle both string and number values
             self.Config.door_lock_enabled.subscribe(function(value) {
-                self.doorLockEnabled(value == 1);
+                self.doorLockEnabled(value == 1 || value === "1" || value === true);
             });
-            self.doorLockEnabled(self.Config.door_lock_enabled() == 1);
+            self.doorLockEnabled(self.Config.door_lock_enabled() == 1 || self.Config.door_lock_enabled() === "1" || self.Config.door_lock_enabled() === true);
         };
 
         self.onDataUpdaterPluginMessage = function(plugin, data) {

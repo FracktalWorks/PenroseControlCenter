@@ -32,6 +32,7 @@ class StrobeLED(threading.Thread):
 
     def __init__(self, pin, delay_on=DELAY_ON, delay_off=DELAY_OFF, fn_on=None, fn_off=None):
         super(StrobeLED, self).__init__()
+        self.daemon = True  # Daemon thread so it doesn't block OctoPrint shutdown
         self.pin = pin
         self.delay_on = delay_on
         self.delay_off = delay_off
@@ -92,6 +93,7 @@ class StrobeLED(threading.Thread):
 
 
 class PenroseControlCenter(octoprint.plugin.StartupPlugin,
+                           octoprint.plugin.SoftwareUpdatePlugin,
                            octoprint.plugin.EventHandlerPlugin,
                            octoprint.plugin.TemplatePlugin,
                            octoprint.plugin.SettingsPlugin,
