@@ -1147,12 +1147,20 @@ class MainController(QtCore.QObject):
             self.octoprint_client.gcode(command='M107')
             self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
             self.octoprint_client.setBedTemperature(0)
-            # Turn off Chamber heater
-            self.octoprint_client.gcode(command='CHAMBER_OFF')
             # Turn off Ring heater
             self.octoprint_client.gcode(command='M144')
-            # Turn off Filament/Spool heater
-            self.octoprint_client.gcode(command='M142 S0')
+            # Turn off Barrel heaters (only if printer has them)
+            cs = self.main_window.control_screen
+            if hasattr(cs, 'H0TempSpinBox') and cs.H0TempSpinBox:
+                self.octoprint_client.gcode(command='M104 H0 S0')
+            if hasattr(cs, 'H1TempSpinBox') and cs.H1TempSpinBox:
+                self.octoprint_client.gcode(command='M104 H1 S0')
+            # Turn off Chamber heater (only if printer has one)
+            if hasattr(cs, 'chamberTempSpinBox') and cs.chamberTempSpinBox:
+                self.octoprint_client.gcode(command='CHAMBER_OFF')
+            # Turn off Filament/Spool heater (only if printer has one)
+            if hasattr(cs, 'spoolTempSpinBox') and cs.spoolTempSpinBox:
+                self.octoprint_client.gcode(command='M142 S0')
             self.main_window.control_screen.toolTempSpinBox.setProperty("value", 0)
             self.main_window.control_screen.bedTempSpinBox.setProperty("value", 0)
         except Exception as e:

@@ -638,7 +638,7 @@ class filamentManagementScreen(QWidget):
         except Exception:
             pass
         cb_nozzle.addItem("Unknown")
-        for n in getattr(model, 'nozzle_options', ["0.25", "0.4", "0.6", "0.8", "1.0"]):
+        for n in getattr(model, 'nozzle_options', ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]):
             cb_nozzle.addItem(n)
         idx = cb_nozzle.findText(current.get("nozzle", "Unknown"))
         if idx >= 0:

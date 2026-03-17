@@ -92,7 +92,7 @@ class PrinterModel(QObject):
         # Tool state persistence
         # self.status_options = ["Empty", "Unknown", "Loaded", "Staged"]
         self.status_options = ["Empty", "Loaded"]
-        self.nozzle_options = ["0.25", "0.4", "0.6", "0.8", "1.0"]
+        self.nozzle_options = ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]
         # Nested per-bay structure per tool; defaults reflect current A/B mapping
         self.tools = {
             "tool0": {

@@ -349,8 +349,10 @@ class ControlScreen(QWidget):
             self.octoprint_client.setBedTemperature(0)
             # Turn off all heaters
             self.octoprint_client.gcode(command='M144')  # Ring heater off (M144)
-            self.octoprint_client.gcode(command='M104 H0 S0')  # Secondary heater H0
-            self.octoprint_client.gcode(command='M104 H1 S0')  # Secondary heater H1
+            if self.H0TempSpinBox:
+                self.octoprint_client.gcode(command='M104 H0 S0')  # Secondary heater H0
+            if self.H1TempSpinBox:
+                self.octoprint_client.gcode(command='M104 H1 S0')  # Secondary heater H1
             
             # Update UI spinboxes
             self.toolTempSpinBox.setProperty("value", 0)
