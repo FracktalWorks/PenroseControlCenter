@@ -854,7 +854,7 @@ class octoprintAPI:
 
 
     def isFailureDetected(self):
-        url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/isFailureDetected'
+        url = 'http://' + self.ip + '/plugin/PenrosePrintRestore/isFailureDetected'
         headers = {'X-Api-Key': self.apiKey}
         try:
             response = requests.get(url, headers=headers, timeout=5)
@@ -865,7 +865,7 @@ class octoprintAPI:
             return {"canRestore": False}
 
     def restore(self, restore = False):
-        url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/restore'
+        url = 'http://' + self.ip + '/plugin/PenrosePrintRestore/restore'
         headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
         payload = {'restore': restore}
         try:
@@ -877,7 +877,7 @@ class octoprintAPI:
             return {}
 
     def getPrintRestoreSettings(self):
-        url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/getSettings'
+        url = 'http://' + self.ip + '/plugin/PenrosePrintRestore/getSettings'
         headers = {'X-Api-Key': self.apiKey}
         try:
             response = requests.get(url, headers=headers, timeout=5)
@@ -887,10 +887,10 @@ class octoprintAPI:
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             return None
 
-    def savePrintRestoreSettings(self, restore = False, enabled = True, interval = 1):
-        url = 'http://' + self.ip + '/plugin/TwinDragonPrintRestore/saveSettings'
+    def savePrintRestoreSettings(self, autoRestore = False, enabled = True, interval = 1, enableBabystep = True):
+        url = 'http://' + self.ip + '/plugin/PenrosePrintRestore/saveSettings'
         headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
-        payload = {'restore': restore, "interval" : interval, "enabled": enabled}
+        payload = {'autoRestore': autoRestore, "interval" : interval, "enabled": enabled, "enableBabystep": enableBabystep}
         requests.post(url, data=json.dumps(payload), headers=headers)
 
     def overrideDoorLock(self):

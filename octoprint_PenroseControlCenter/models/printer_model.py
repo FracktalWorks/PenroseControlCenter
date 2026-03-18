@@ -207,8 +207,8 @@ class PrinterModel(QObject):
                         self.set_print_restore_pref(new_enabled, persist=True)
                 
                 # Update auto resume state
-                if 'restore' in settings_data:
-                    new_restore = bool(settings_data['restore'])
+                if 'autoRestore' in settings_data:
+                    new_restore = bool(settings_data['autoRestore'])
                     if new_restore != self.auto_resume_enabled:
                         self.set_auto_resume_pref(new_restore, persist=True)
                 

@@ -14,7 +14,6 @@ import requests
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from utils.logger import get_logger
-from utils.helpers import run_async
 from config import IGNORED_PRINTER_ERRORS
 
 
@@ -177,8 +176,10 @@ class OctoPrintWebSocket(QThread):
             self.logger.info(f"Reconnection attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}")
             
             if self.reconnect_attempts > self.max_reconnect_attempts:
-                self.logger.error("Max reconnect attempts reached. Giving up.")
-                return
+                self.logger.warning("Max reconnect attempts reached. Waiting 30s before resetting counter and retrying.")
+                time.sleep(30)
+                self.reconnect_attempts = 1
+                self.logger.info("Reconnect counter reset, retrying...")
 
             # Properly terminate current thread if it's still running
             if self.isRunning():
@@ -348,10 +349,11 @@ class OctoPrintWebSocket(QThread):
         else:
             self.logger.debug("Reconnection already in progress, skipping")
 
-    @run_async
     def process(self, data):
         """
-        Process data from the WebSocket
+        Process data from the WebSocket.
+        Called from the websocket thread — signals are cross-thread
+        and delivered via Qt's event loop, so no extra thread needed.
         :param data: Data from the WebSocket
         """
         try:
@@ -534,9 +536,8 @@ class OctoPrintWebSocket(QThread):
                                             sensor_name = sensor_match.group(1)
                                             is_detected = 'filament detected' in item and 'not detected' not in item
                                             self.logger.info(f"Pellet sensor query response - {sensor_name}: {'detected' if is_detected else 'not detected'}")
-                                            # Update printer model via pelletSensorState
-                                            if self.printer_model:
-                                                self.printer_model.pelletSensorState(sensor_name, is_detected)
+                                            # Emit via existing signal so printer_model receives it through Qt signal-slot
+                                            self.filament_runout_state_signal.emit(sensor_name, is_detected)
                                     except Exception as e:
                                         self.logger.error(f"Error parsing pellet sensor query response: {e}")
                                 

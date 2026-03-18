@@ -719,9 +719,9 @@ class ControlScreen(QWidget):
             enabled = self.toggleAutoResumeButton.isChecked()
             # Update model preference (persists)
             self.main_window.printer_model.set_auto_resume_pref(enabled, persist=True)
-            # Apply the setting to OctoPrint via the TwinDragonPrintRestore plugin
+            # Apply the setting to OctoPrint via the PenrosePrintRestore plugin
             self.main_window.octoprint_client.savePrintRestoreSettings(
-                restore=enabled,
+                autoRestore=enabled,
                 enabled=self.main_window.printer_model.print_restore_enabled,
                 interval=1  # Default interval of 1 second
             )
@@ -743,9 +743,9 @@ class ControlScreen(QWidget):
             if not enabled:
                 self.toggleAutoResumeButton.setChecked(False)
                 self.main_window.printer_model.set_auto_resume_pref(False, persist=True)
-            # Apply the setting to OctoPrint via the TwinDragonPrintRestore plugin
+            # Apply the setting to OctoPrint via the PenrosePrintRestore plugin
             self.main_window.octoprint_client.savePrintRestoreSettings(
-                restore=self.main_window.printer_model.auto_resume_enabled,
+                autoRestore=self.main_window.printer_model.auto_resume_enabled,
                 enabled=enabled,
                 interval=1  # Default interval of 1 second
             )
