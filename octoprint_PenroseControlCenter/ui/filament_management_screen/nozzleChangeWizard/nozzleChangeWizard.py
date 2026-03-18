@@ -105,8 +105,8 @@ class NozzleChangeWizard(QWidget):
 		self.nextButton.clicked.connect(self.on_next_clicked)
 		self.cancelButton.clicked.connect(self.on_cancel_clicked)
 
-		# Start at step 1
-		self.goto_step(self.STEP_HEAT)
+		# Set initial page visually (without triggering heating logic)
+		self._reset_visual_state()
 
 	# ----- Public API for parent screen -----------------------------------
 	def setup(self, params=None):
@@ -179,7 +179,7 @@ class NozzleChangeWizard(QWidget):
 			self._stop_heat_timer()
 			self._cool_down()
 			self.main_window.filament_management_screen.show_material_nozzle_screen()
-			self.goto_step(0)
+			self._reset_visual_state()
 		except Exception as e:
 			self.logger.error(f"Error cancelling nozzle change wizard: {e}")
 
@@ -194,9 +194,19 @@ class NozzleChangeWizard(QWidget):
 				self.logger.warning(f"Unable to persist nozzle selection: {e}")
 			self._cool_down()
 			self.main_window.filament_management_screen.show_material_nozzle_screen()
-			self.goto_step(0)
+			self._reset_visual_state()
 		except Exception as e:
 			self.logger.error(f"Error finishing nozzle change wizard: {e}")
+
+	def _reset_visual_state(self):
+		"""Reset wizard to step 1 visually without triggering heating logic."""
+		self._current_step = self.STEP_HEAT
+		page_idx = self._PAGE_MAP.get(self.STEP_HEAT, 0)
+		if self.stackedWidget:
+			self.stackedWidget.setCurrentIndex(page_idx)
+		self._update_step_label()
+		if self.nextButton:
+			self.nextButton.setText("Next")
 
 	def _update_step_label(self):
 		"""Update the step counter label."""
