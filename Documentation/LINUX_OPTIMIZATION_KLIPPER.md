@@ -214,51 +214,75 @@ systemctl list-units --type=service --state=running
 
 ## 7. /boot/config.txt Optimizations
 
+### Background — Previous Config Was the Root Cause
+
+The original `/boot/config.txt` contained settings intended to prevent undervoltage warnings:
+
+```ini
+# ❌ PROBLEMATIC — DO NOT USE
+arm_freq=900
+arm_freq_max=900
+arm_freq_min=500
+gpu_freq=250
+core_freq_min=250
+sdram_freq_min=250
+over_voltage=-16
+over_voltage_min=-8
+initial_turbo=120
+temp_limit=60
+avoid_warnings=1
+```
+
+This was almost certainly the **primary cause** of "Timer too close" errors:
+
+| Setting | Problem |
+|---|---|
+| `arm_freq=900` / `arm_freq_max=900` | CPU capped at 60% of max speed (1500 MHz) |
+| `over_voltage=-16` | Heavily undervolts the CPU |
+| `temp_limit=60` | Hard-throttles to 600 MHz at a *normal* operating temperature |
+| `avoid_warnings=1` | Hides undervoltage warnings — masks the symptom instead of fixing it |
+
+The combined effect: CPU was running at 900 MHz max, throttled further to 600 MHz whenever it hit 60°C (which is perfectly normal), all while being starved of voltage. Klipper needs to calculate and schedule 7 stepper pulses in real time — at 600 MHz it simply cannot keep up.
+
+### Correct Config
+
 Edit `/boot/config.txt`:
 
 ```bash
 sudo nano /boot/config.txt
 ```
 
-Add or modify these lines:
+**Remove** the entire block listed above and **replace** with:
 
 ```ini
-# === Klipper Optimizations ===
-
-# Disable Bluetooth (frees UART, removes background interrupts)
-dtoverlay=disable-bt
-
-# Minimize GPU memory (printer doesn't need GPU rendering)
-# Also reduces heat generation on the SoC
-gpu_mem=16
-
-# Disable audio (not needed on a printer, reduces heat)
-dtparam=audio=off
-
-# Raise soft thermal throttle threshold from 60°C to 70°C
-# Default 60°C is too aggressive — CM4 is safe up to 80°C
-# Hard throttle still kicks in at 85°C as a safety net
+# === CM4 Performance (moderate — avoids Timer too close while reducing heat vs stock 1500MHz) ===
+arm_freq=1200
 temp_soft_limit=70
-
-# Overclock CM4 for more headroom (conservative)
-# 1800MHz is safe with a heatsink. Use 1700 without one.
-# DO NOT enable overclock until thermal throttling is resolved (vcgencmd get_throttled = 0x0)
-arm_freq=1800
-over_voltage=4
+gpu_mem=128
+dtparam=audio=off
 ```
 
-> **Note on heat reduction:** `gpu_mem=16` and `dtparam=audio=off` both reduce SoC heat generation by disabling unused hardware blocks. `temp_soft_limit=70` delays the point at which the firmware starts scaling down the CPU clock, giving more headroom before throttling kicks in.
+Also ensure the Bluetooth disable overlay is present:
 
-### Overclock Safety Notes
+```ini
+# Disable Bluetooth (frees UART, removes background interrupts)
+dtoverlay=disable-bt
+```
 
-| arm_freq | over_voltage | Requires Heatsink? | Notes |
-|----------|-------------|-------------------|-------|
-| 1500 | 0 (default) | No | Stock CM4 speed |
-| 1700 | 2 | Recommended | Safe without heatsink in most enclosures |
-| 1800 | 4 | **Yes** | Safe with heatsink or active cooling |
-| 2000 | 6 | **Yes + fan** | Aggressive — test stability first |
+### What Each Setting Does
 
-> **Your setup (BTT M8P):** The M8P board typically has a heatsink area for the CM4. Verify your CM4 has a heatsink attached before using `arm_freq=1800`.
+| Setting | Value | Explanation |
+|---|---|---|
+| `arm_freq` | 1200 | 80% of stock 1500 MHz — reduces heat while providing enough speed for Klipper with 7 steppers |
+| `temp_soft_limit` | 70 | Delays soft thermal throttling from default 60°C to 70°C (CM4 is safe up to 80°C, hard limit at 85°C) |
+| `gpu_mem` | 128 | Default allocation — required for HDMI touchscreen running X11 + PyQt UI |
+| `dtparam=audio` | off | Disables unused audio hardware — reduces SoC heat |
+
+> **Why 1200 MHz and not 1500?** It's a compromise between heat and performance. 1200 MHz generates less heat than stock while providing 2x the speed of the previous 600 MHz throttled state. With a heatsink, you could safely go to 1500 MHz.
+
+> **Why gpu_mem=128 and not lower?** The printer runs a full display stack (X11 + PyQt + fbcp) on an HDMI touchscreen. Lower values (e.g., 16) would cause rendering issues.
+
+> **Why no `avoid_warnings`?** You *want* to see undervoltage warnings — they tell you if the M8P isn't supplying enough power to the CM4. If you see a lightning bolt icon or `vcgencmd get_throttled` shows `0x50005`, that's a hardware/PSU issue that needs fixing, not hiding.
 
 ---
 
@@ -362,7 +386,7 @@ ps -eo pid,ni,args | grep klippy.py
 === CPU Governor ===
 performance
 === CPU Frequency ===
-1800000
+1200000
 === Swappiness ===
 10
 === ModemManager ===
@@ -405,8 +429,8 @@ Transfer the PNG to your PC and look for:
 | 4 | Swappiness → 10 | **Action required** | Prevents disk I/O latency from memory pressure | Yes (remove sysctl conf) |
 | 5 | Klipper Nice=-10 | **Action required** | Gives Klipper CPU priority over all user processes | Yes (delete override file) |
 | 6 | Disable timers/services | **Action required** | Reduces CPU contention during prints | Yes (`enable` services) |
-| 7 | Overclock 1800MHz | **Action required** | 20% more CPU headroom for step calculations | Yes (remove from config.txt) |
-| 7 | gpu_mem=16 | **Action required** | Frees ~100MB RAM, reduces SoC heat | Yes (remove from config.txt) |
+| 7 | arm_freq=1200 | **Action required** | 2x faster than previous 600MHz throttled state | Yes (remove from config.txt) |
+| 7 | gpu_mem=128 | **Action required** | Default allocation for HDMI touchscreen + PyQt | Yes (remove from config.txt) |
 | 7 | temp_soft_limit=70 | **Action required** | Delays thermal throttling from 60°C to 70°C | Yes (remove from config.txt) |
 | 7 | dtparam=audio=off | **Action required** | Reduces SoC heat generation | Yes (remove from config.txt) |
 
@@ -418,10 +442,10 @@ These firmware-level changes were also made to reduce MCU load:
 
 | Setting | Before | After | File |
 |---|---|---|---|
-| `max_velocity` | 600 | 300 | `PRINTER_PENROSE_600.cfg` |
-| `max_accel` | 2500 | 2000 | `PRINTER_PENROSE_600.cfg` |
-| `gcode_arcs resolution` | 0.1 | 0.5 | `BASE_PENROSE.cfg` |
-| `step_pulse_duration` (all 7 motors) | 0.000005 (5µs) | 0.000003 (3µs) | `BASE_PENROSE.cfg` |
+| `max_velocity` | 600 | 300 | `PRINTER_PENROSE_600_DUAL.cfg` |
+| `max_accel` | 2500 | 2000 | `PRINTER_PENROSE_600_DUAL.cfg` |
+| `gcode_arcs resolution` | 0.1 | 0.5 | `BASE_PENROSE_DUAL.cfg` |
+| `step_pulse_duration` (all 7 motors) | 0.000005 (5µs) | 0.000003 (3µs) | `BASE_PENROSE_DUAL.cfg` |
 
 ### CM4 Temperature Monitoring (Add to Klipper Config)
 
@@ -436,7 +460,7 @@ max_temp: 100
 
 This reads the CM4's SoC temperature directly from the Linux thermal zone. It will appear as a temperature sensor named "CM4" in OctoPrint / your UI. Use it to verify that thermals stay below 70°C during prints.
 
-> **Where to add:** This can be added to `BASE_PENROSE.cfg` alongside other sensor definitions, or to `printer.cfg`.
+> **Where to add:** This can be added to `BASE_PENROSE_DUAL.cfg` alongside other sensor definitions, or to `printer.cfg`.
 
 ---
 

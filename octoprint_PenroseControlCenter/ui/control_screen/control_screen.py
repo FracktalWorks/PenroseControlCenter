@@ -344,14 +344,16 @@ class ControlScreen(QWidget):
         logger.info("ControlScreen.coolDownAction started")
         try:
             self.octoprint_client.gcode(command='M107')
-            self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
-            # octopiclient.setToolTemperature({"tool0": 0})
+            if is_dual_nozzle_printer():
+                self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
+            else:
+                self.octoprint_client.setToolTemperature({"tool0": 0})
             self.octoprint_client.setBedTemperature(0)
             # Turn off all heaters
             self.octoprint_client.gcode(command='M144')  # Ring heater off (M144)
             if self.H0TempSpinBox:
                 self.octoprint_client.gcode(command='M104 H0 S0')  # Secondary heater H0
-            if self.H1TempSpinBox:
+            if self.H1TempSpinBox and is_dual_nozzle_printer():
                 self.octoprint_client.gcode(command='M104 H1 S0')  # Secondary heater H1
             
             # Update UI spinboxes

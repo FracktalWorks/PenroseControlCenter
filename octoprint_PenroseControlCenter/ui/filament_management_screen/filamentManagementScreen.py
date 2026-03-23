@@ -6,7 +6,7 @@ from PyQt5.QtCore import Qt
 from PyQt5 import uic
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen
+from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer
 from utils import dialog
 from utils import styles
 import config
@@ -311,10 +311,16 @@ class filamentManagementScreen(QWidget):
         """
         try:
             # Send query commands to Klipper - responses are parsed by websocket_client
-            self.octoprint_client.gcode(
-                command='QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_left\n'
-                        'QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_right'
-            )
+            # Only query pellet_sensor_right on dual nozzle printers (sensor doesn't exist on single)
+            if is_dual_nozzle_printer():
+                self.octoprint_client.gcode(
+                    command='QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_left\n'
+                            'QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_right'
+                )
+            else:
+                self.octoprint_client.gcode(
+                    command='QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_left'
+                )
             self.logger.debug("Sent pellet sensor query commands")
             
             # Also update UI from current state map (may have been updated by previous responses)
@@ -323,14 +329,17 @@ class filamentManagementScreen(QWidget):
             
             # Get sensor states (True = pellets detected, False = empty)
             left_detected = sensor_map.get('pellet_sensor_left', None)
-            right_detected = sensor_map.get('pellet_sensor_right', None)
             
             # Update UI for tool0 (left)
             self._update_pellet_sensor_display("tool0", left_detected)
-            # Update UI for tool1 (right)
-            self._update_pellet_sensor_display("tool1", right_detected)
             
-            self.logger.debug(f"Pellet sensors state - Left: {left_detected}, Right: {right_detected}")
+            # Update UI for tool1 (right) — dual nozzle only
+            if is_dual_nozzle_printer():
+                right_detected = sensor_map.get('pellet_sensor_right', None)
+                self._update_pellet_sensor_display("tool1", right_detected)
+                self.logger.debug(f"Pellet sensors state - Left: {left_detected}, Right: {right_detected}")
+            else:
+                self.logger.debug(f"Pellet sensors state - Left: {left_detected} (single nozzle)")
         except Exception as e:
             self.logger.error(f"Error polling pellet sensors: {e}")
 

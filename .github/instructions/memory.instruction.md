@@ -111,12 +111,15 @@ Located in `octoprint_PenroseControlCenter/firmware/`:
 | File | Purpose |
 |------|---------|
 | `printer.cfg` | Main entry point, includes all other configs |
-| `BASE_PENROSE.cfg` | Common hardware: steppers, MCU pins, heaters |
-| `PRINTER_PENROSE_600.cfg` | Model-specific: dimensions, PRINTER_VARIABLES |
+| `BASE_PENROSE_DUAL.cfg` | IDEX hardware: dual carriage, steppers, heaters, H0/H1 |
+| `BASE_PENROSE_SINGLE.cfg` | Single nozzle hardware: no dual carriage, H0 only |
+| `PRINTER_PENROSE_600_DUAL.cfg` | Dual nozzle IDEX: dimensions, PRINTER_VARIABLES |
+| `PRINTER_PENROSE_600_SINGLE.cfg` | Single nozzle: dimensions, PRINTER_VARIABLES |
 | `CORE_GCODE_MACROS.cfg` | Marlin-compatible G-codes (M104, M218, M503, etc.) |
-| `PELLET_RELAY_CONTROL.cfg` | Pellet feeder solenoids and control macros |
+| `PELLET_RELAY_CONTROL_DUAL.cfg` | Pellet feeder - both LEFT and RIGHT valves with mutual exclusion |
+| `PELLET_RELAY_CONTROL_SINGLE.cfg` | Pellet feeder - LEFT valve only |
 | `T0_PELLET_LEVEL_SENSOR.cfg` | T0 capacitive sensor config |
-| `T1_PELLET_LEVEL_SENSOR.cfg` | T1 capacitive sensor config |
+| `T1_PELLET_LEVEL_SENSOR.cfg` | T1 capacitive sensor config (dual nozzle only) |
 | `variables.cfg` | Runtime variables storage |
 
 ### PRINTER_VARIABLES Macro
@@ -227,13 +230,13 @@ self.main_window.printer_model.status_updated.connect(...)
 4. Test via OctoPrint terminal
 
 ### Modifying IDEX Behavior
-1. Update `PRINTER_VARIABLES` in `PRINTER_PENROSE_600.cfg`
+1. Update `PRINTER_VARIABLES` in `PRINTER_PENROSE_600_DUAL.cfg` or `PRINTER_PENROSE_600_SINGLE.cfg`
 2. Modify macros in `CORE_GCODE_MACROS.cfg`
 3. Test T0/T1 tool changes: `T0`, `T1`
 4. Test IDEX modes: `M605 S0` (full control), `M605 S1` (auto-park)
 
 ### Pellet System Modifications
-1. Update `PELLET_RELAY_CONTROL.cfg` for solenoid logic
+1. Update `PELLET_RELAY_CONTROL_DUAL.cfg` / `PELLET_RELAY_CONTROL_SINGLE.cfg` for solenoid logic
 2. Update `T0/T1_PELLET_LEVEL_SENSOR.cfg` for sensor behavior
 3. Test with `QUERY_PELLET_SYSTEM`
 4. Verify with `SET_PELLET_SENSOR S=1/0`

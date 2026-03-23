@@ -26,6 +26,7 @@ from utils.helpers import run_async
 from utils import dialog
 from ui.loading_screen.loading_screen import LoadingScreen
 from config import ip, apiKey, CRITICAL_PRINTER_ERRORS, IGNORED_PRINTER_ERRORS
+from utils.printer_ui_config import is_dual_nozzle_printer
 
 
 logger = get_logger(__name__)
@@ -618,19 +619,22 @@ class MainController(QtCore.QObject):
         """Enable/disable pellet level sensors per preferences.
         
         Uses Klipper's SET_FILAMENT_SENSOR command with the sensor names:
-        - pellet_sensor_left (T0)
-        - pellet_sensor_right (T1)
+        - pellet_sensor_left (T0) — always present
+        - pellet_sensor_right (T1) — dual nozzle only
         """
         if not self.octoprint_client:
             return
         try:
             t0_enabled = getattr(self.printer_model, 'pellet_sensor_t0_enabled', True)
-            t1_enabled = getattr(self.printer_model, 'pellet_sensor_t1_enabled', True)
             t0_state = 1 if t0_enabled else 0
-            t1_state = 1 if t1_enabled else 0
             self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE={t0_state}')
-            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE={t1_state}')
-            self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} T1(right)={t1_state}")
+            if is_dual_nozzle_printer():
+                t1_enabled = getattr(self.printer_model, 'pellet_sensor_t1_enabled', True)
+                t1_state = 1 if t1_enabled else 0
+                self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE={t1_state}')
+                self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} T1(right)={t1_state}")
+            else:
+                self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} (single nozzle)")
         except Exception as e:
             self.logger.error(f"Failed applying pellet sensor state: {e}")
 
@@ -713,19 +717,24 @@ class MainController(QtCore.QObject):
             # Check tool1 nozzle
             if gcode_metadata.get('nozzle_t1') is not None:
                 expected_nozzle = gcode_metadata['nozzle_t1']
-                current_nozzle = current_config['tool1']['nozzle']
                 # Skip validation if GCODE has N/A (tool not used)
-                if expected_nozzle != 'N/A' and current_nozzle != 'Unknown':
-                    # Convert both to float for comparison to handle different string formats
-                    try:
-                        expected_size = float(expected_nozzle)
-                        current_size = float(current_nozzle)
-                        if expected_size != current_size:
-                            mismatches.append(f"Tool1 nozzle mismatch: GCODE expects {expected_nozzle}mm, printer has {current_nozzle}mm")
-                    except ValueError:
-                        # Fallback to string comparison if conversion fails
-                        if expected_nozzle != current_nozzle:
-                            mismatches.append(f"Tool1 nozzle mismatch: GCODE expects {expected_nozzle}mm, printer has {current_nozzle}mm")
+                if expected_nozzle != 'N/A':
+                    if not is_dual_nozzle_printer():
+                        # Single nozzle printer can't use tool1
+                        mismatches.append(f"GCODE requires Tool1 (nozzle {expected_nozzle}mm) but printer has only one extruder")
+                    else:
+                        current_nozzle = current_config['tool1']['nozzle']
+                        if current_nozzle != 'Unknown':
+                            # Convert both to float for comparison to handle different string formats
+                            try:
+                                expected_size = float(expected_nozzle)
+                                current_size = float(current_nozzle)
+                                if expected_size != current_size:
+                                    mismatches.append(f"Tool1 nozzle mismatch: GCODE expects {expected_nozzle}mm, printer has {current_nozzle}mm")
+                            except ValueError:
+                                # Fallback to string comparison if conversion fails
+                                if expected_nozzle != current_nozzle:
+                                    mismatches.append(f"Tool1 nozzle mismatch: GCODE expects {expected_nozzle}mm, printer has {current_nozzle}mm")
 
             # Check tool0 material
             if gcode_metadata.get('material_t0') is not None:
@@ -740,12 +749,17 @@ class MainController(QtCore.QObject):
             # Check tool1 material
             if gcode_metadata.get('material_t1') is not None:
                 expected_material = gcode_metadata['material_t1']
-                current_material = current_config['tool1']['material']
                 # Skip validation if GCODE has N/A (no material/tool not used)
-                if expected_material != 'N/A' and current_material is not None:
-                    # Use partial string matching - check if current material is contained in expected material string
-                    if not self._materials_compatible(current_material, expected_material):
-                        mismatches.append(f"Tool1 material mismatch: GCODE expects {expected_material}, printer has {current_material}")
+                if expected_material != 'N/A':
+                    if not is_dual_nozzle_printer():
+                        # Single nozzle printer can't use tool1
+                        mismatches.append(f"GCODE requires Tool1 material ({expected_material}) but printer has only one extruder")
+                    else:
+                        current_material = current_config['tool1']['material']
+                        if current_material is not None:
+                            # Use partial string matching
+                            if not self._materials_compatible(current_material, expected_material):
+                                mismatches.append(f"Tool1 material mismatch: GCODE expects {expected_material}, printer has {current_material}")
 
             is_compatible = len(mismatches) == 0
             self.logger.info(f"GCODE compatibility check for {filename}: {'PASS' if is_compatible else 'FAIL'}")
@@ -1034,7 +1048,8 @@ class MainController(QtCore.QObject):
             if self.octoprint_client:
                 # Disable pellet sensors when print is paused (stops auto-refill)
                 self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                if is_dual_nozzle_printer():
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
         except Exception as e:
             self.logger.error(f"Error in onPrintPaused: {e}")
 
@@ -1044,7 +1059,8 @@ class MainController(QtCore.QObject):
             if self.octoprint_client:
                 # Disable pellet sensors immediately
                 self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                if is_dual_nozzle_printer():
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:
@@ -1056,7 +1072,8 @@ class MainController(QtCore.QObject):
             if self.octoprint_client:
                 # Disable pellet sensors immediately
                 self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                if is_dual_nozzle_printer():
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:
@@ -1173,7 +1190,10 @@ class MainController(QtCore.QObject):
         self.logger.info("MainController.coolDownAction started")
         try:
             self.octoprint_client.gcode(command='M107')
-            self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
+            if is_dual_nozzle_printer():
+                self.octoprint_client.setToolTemperature({"tool0": 0, "tool1": 0})
+            else:
+                self.octoprint_client.setToolTemperature({"tool0": 0})
             self.octoprint_client.setBedTemperature(0)
             # Turn off Ring heater
             self.octoprint_client.gcode(command='M144')
@@ -1181,7 +1201,7 @@ class MainController(QtCore.QObject):
             cs = self.main_window.control_screen
             if hasattr(cs, 'H0TempSpinBox') and cs.H0TempSpinBox:
                 self.octoprint_client.gcode(command='M104 H0 S0')
-            if hasattr(cs, 'H1TempSpinBox') and cs.H1TempSpinBox:
+            if is_dual_nozzle_printer() and hasattr(cs, 'H1TempSpinBox') and cs.H1TempSpinBox:
                 self.octoprint_client.gcode(command='M104 H1 S0')
             # Turn off Chamber heater (only if printer has one)
             if hasattr(cs, 'chamberTempSpinBox') and cs.chamberTempSpinBox:

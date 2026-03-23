@@ -116,11 +116,13 @@ Add your screen's dual nozzle elements to `utils/printer_ui_config.py`:
 ```python
 DUAL_NOZZLE_ELEMENTS = {
     'home_screen': [
-        'tool1Layout', 'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
+        'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
         'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature', 'tool1TextLabel', 'toolSeperationLine'
     ],
     'control_screen': [
-        'toolToggleTemperatureButton', 'toolToggleMotionButton'
+        'toolToggleTemperatureButton', 'toolToggleMotionButton',
+        'togglePelletSensorT1Button',
+        'H1TempSpinBox', 'setH1TempButton', 'H140PreheatButton', 'H160PreheatButton'
     ],
     'filament_management_screen': [
         'changeTool1MaterialBayX', 'tool1Frame', 'editTool1MaterialBayX',
@@ -128,7 +130,8 @@ DUAL_NOZZLE_ELEMENTS = {
         'tool1MaterialBayXLabel'
     ],
     'calibrate_screen': [
-        'idexCalibrationWizardButton', 'toolOffsetZButton', 'toolOffsetXYButton'
+        'idexCalibrationWizardButton', 'toolOffsetZButton', 'toolOffsetXYButton',
+        'cameraToolOffsetCalibrateButton', 'toolZOffsetWizardButton'
     ],
     # Add your new screen here
     'your_new_screen': [
@@ -278,10 +281,14 @@ octoprint_ControlCenter/
 │   ├── printer_ui_config.py          # UI configuration module with is_dual_nozzle_printer()
 │   └── printer_config_manager.py     # Manages printer configuration from Klipper files
 ├── firmware/                          # Printer configuration files
-│   ├── PRINTER_DRAGON_400.cfg        # Single nozzle printer (is_dual_nozzle: 0)
-│   ├── PRINTER_DRAGON_500.cfg        # Single nozzle printer (is_dual_nozzle: 0)
-│   ├── PRINTER_TWINDRAGON_600.cfg    # Dual nozzle printer (is_dual_nozzle: 1)
-│   └── PRINTER_TWINDRAGON_600x300.cfg # Dual nozzle printer (is_dual_nozzle: 1)
+│   ├── PRINTER_PENROSE_600_DUAL.cfg  # Dual nozzle IDEX printer (is_dual_nozzle: 1)
+│   ├── PRINTER_PENROSE_600_SINGLE.cfg # Single nozzle printer (is_dual_nozzle: 0)
+│   ├── BASE_PENROSE_DUAL.cfg         # IDEX hardware base config (dual carriage, extruder1, H1)
+│   ├── BASE_PENROSE_SINGLE.cfg      # Single nozzle hardware base config (no dual carriage)
+│   ├── PELLET_RELAY_CONTROL_DUAL.cfg # Pellet feeder system - both LEFT and RIGHT valves
+│   ├── PELLET_RELAY_CONTROL_SINGLE.cfg # Pellet feeder system - LEFT valve only
+│   ├── T0_PELLET_LEVEL_SENSOR.cfg   # Left pellet level sensor
+│   └── T1_PELLET_LEVEL_SENSOR.cfg   # Right pellet level sensor (dual nozzle only)
 └── ui/
     ├── main_window.py                 # Uses apply_nozzle_config_to_all_screens()
     ├── home_screen/

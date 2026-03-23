@@ -44,10 +44,13 @@ def has_spool_heater():
 DUAL_NOZZLE_ELEMENTS = {
     'home_screen': [
         'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
-        'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature', 'tool1TextLabel', 'toolSeperationLine'
+        'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature', 'tool1TextLabel', 'toolSeperationLine',
+        'H1TargetTemperature', 'H1ActualTemperature', 'H1TempBar', 'H1Label', 'H1TextLabel'
     ],
     'control_screen': [
-        'toolToggleTemperatureButton', 'toolToggleMotionButton'
+        'toolToggleTemperatureButton', 'toolToggleMotionButton',
+        'togglePelletSensorT1Button',
+        'H1TempSpinBox', 'setH1TempButton', 'H140PreheatButton', 'H160PreheatButton'
     ],
     'filament_management_screen': [
         'changeTool1MaterialBayX', 'tool1Frame', 'editTool1MaterialBayX',

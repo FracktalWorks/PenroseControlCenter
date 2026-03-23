@@ -511,12 +511,21 @@ class PrinterConfigManager:
                 os.system(f'sudo chown -R pi:pi "{os.path.dirname(gcode_scripts_dir)}"')
                 
                 # Create default gcode script files to override existing ones
+                # Check if printer is dual nozzle to include T1 cooldown commands
+                printer_config = self.get_printer_config_from_variables(printer_name)
+                is_dual = printer_config.get('is_dual', True)
+                
+                if is_dual:
+                    after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM104 T1 S0  ; Cool down tool1 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
+                else:
+                    after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
+                
                 default_scripts = {
                     'beforePrintStarted': 'M514 S1  ; Open door/chamber on print start',
                     'beforePrintResumed': 'RESUME\nM514 S1  ; Resume print and open door/chamber',
                     'afterPrintPaused': 'PAUSE\nM514 S0  ; Pause print and close door/chamber',
-                    'afterPrintDone': 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM104 T1 S0  ; Cool down tool1 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber',
-                    'afterPrintCancelled': 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM104 T1 S0  ; Cool down tool1 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
+                    'afterPrintDone': after_print_cooldown,
+                    'afterPrintCancelled': after_print_cooldown
                 }
                 
                 for script_name, script_content in default_scripts.items():

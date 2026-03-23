@@ -494,11 +494,14 @@ PELLET_FORCE_REFILL TOOL=0 DURATION=10
 
 | File | Purpose |
 |------|---------|
-| `PRINTER_PENROSE_600.cfg` | Printer-specific settings, build volume, kinematics |
-| `BASE_PENROSE.cfg` | Hardware configuration, steppers, heaters, IDEX |
-| `PELLET_RELAY_CONTROL.cfg` | Line-vac solenoids, control macros |
+| `PRINTER_PENROSE_600_DUAL.cfg` | Dual nozzle IDEX printer settings, build volume, kinematics |
+| `PRINTER_PENROSE_600_SINGLE.cfg` | Single nozzle printer settings, build volume, kinematics |
+| `BASE_PENROSE_DUAL.cfg` | IDEX hardware configuration, steppers, heaters, dual carriage |
+| `BASE_PENROSE_SINGLE.cfg` | Single nozzle hardware configuration |
+| `PELLET_RELAY_CONTROL_DUAL.cfg` | Line-vac solenoids, control macros (both LEFT and RIGHT) |
+| `PELLET_RELAY_CONTROL_SINGLE.cfg` | Line-vac solenoid, control macros (LEFT only) |
 | `T0_PELLET_LEVEL_SENSOR.cfg` | Left hopper level sensor |
-| `T1_PELLET_LEVEL_SENSOR.cfg` | Right hopper level sensor |
+| `T1_PELLET_LEVEL_SENSOR.cfg` | Right hopper level sensor (dual nozzle only) |
 | `CORE_GCODE_MACROS.cfg` | Common G-code macros |
 
 ### Extruder Configuration

@@ -542,6 +542,9 @@ class PrinterModel(QObject):
                 self.ptfeTubeLength = config.ptfeTubeLength
                 self.machineBuildSize = config.machineBuildSize
                 self.IS_DUAL_NOZZLE = config.IS_DUAL_NOZZLE
+                self.HAS_HEATER_RING = config.HAS_HEATER_RING
+                self.HAS_HEATED_CHAMBER = config.HAS_HEATED_CHAMBER
+                self.HAS_SPOOL_HEATER = config.HAS_SPOOL_HEATER
                 
                 self.logger.info("Successfully loaded printer configuration from Klipper")
                 self.logger.debug(f"Machine build size: {self.machineBuildSize}")
@@ -568,6 +571,9 @@ class PrinterModel(QObject):
             'tool0PurgePosition': self.tool0PurgePosition,
             'tool1PurgePosition': self.tool1PurgePosition,
             'ptfeTubeLength': self.ptfeTubeLength,
-            'IS_DUAL_NOZZLE': self.IS_DUAL_NOZZLE
+            'IS_DUAL_NOZZLE': self.IS_DUAL_NOZZLE,
+            'HAS_HEATER_RING': getattr(self, 'HAS_HEATER_RING', False),
+            'HAS_HEATED_CHAMBER': getattr(self, 'HAS_HEATED_CHAMBER', False),
+            'HAS_SPOOL_HEATER': getattr(self, 'HAS_SPOOL_HEATER', False)
             # Note: selected_printer_config removed - use get_current_printer_selection() instead
         }
