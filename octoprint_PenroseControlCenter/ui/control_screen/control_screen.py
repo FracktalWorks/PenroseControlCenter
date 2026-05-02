@@ -113,7 +113,13 @@ class ControlScreen(QWidget):
         self.toolToggleMotionButton = self.findChild(QPushButton, "toolToggleMotionButton")
         self.extruderButton = self.findChild(QPushButton, "extruderButton")
         self.retractButton = self.findChild(QPushButton, "retractButton")
+        self.purgeMaterialButton = self.findChild(QPushButton, "purgeMaterialButton")
 
+        # Purge material continuous extrusion state
+        self._purge_timer = QtCore.QTimer(self)
+        self._purge_timer.setInterval(200)  # 200ms between commands: 2mm chunks at F500 take 240ms each
+        self._purge_timer.timeout.connect(self._purge_extrude_tick)
+        self._purging = False
 
         # Validate UI components (only mandatory elements)
         check_ui_elements(self, [
@@ -195,8 +201,13 @@ class ControlScreen(QWidget):
         self.moveZPButton.clicked.connect(lambda: self.octoprint_client.jog(z=self.step, speed=2000))
         self.homeZButton.clicked.connect(lambda: self.octoprint_client.home(['z']))
         self.toolToggleMotionButton.clicked.connect(self.selectToolMotion)
-        self.extruderButton.clicked.connect(lambda: self.octoprint_client.extrude(self.step))
-        self.retractButton.clicked.connect(lambda: self.octoprint_client.extrude(-self.step))
+        self.extruderButton.clicked.connect(self._extrude_step)
+        self.retractButton.clicked.connect(self._retract_step)
+
+        # Purge Material Button - continuous extrusion while held
+        if self.purgeMaterialButton:
+            self.purgeMaterialButton.pressed.connect(self._purge_start)
+            self.purgeMaterialButton.released.connect(self._purge_stop)
 
         # Pellet Sensor Buttons Signal Connections
         self.setFlowRateButton.clicked.connect(self.setFlowRate)
@@ -623,6 +634,66 @@ class ControlScreen(QWidget):
         except Exception as e:
             logger.error("Error in control_screen.setActiveExtruder: {}".format(e))
             dialog.WarningOk(self, "Error in control_screen.setActiveExtruder: {}".format(e), overlay=True)
+
+    # ── Extrude / Retract with explicit feedrate ────────────────
+    def _extrude_step(self):
+        """Extrude by current step amount at F500 using raw gcode."""
+        try:
+            self.octoprint_client.gcode(
+                command=f'G92 E0\nG1 E{self.step} F500'
+            )
+        except Exception as e:
+            self.logger.error(f"Error extruding: {e}")
+
+    def _retract_step(self):
+        """Retract by current step amount at F500 using raw gcode."""
+        try:
+            self.octoprint_client.gcode(
+                command=f'G92 E0\nG1 E-{self.step} F500'
+            )
+        except Exception as e:
+            self.logger.error(f"Error retracting: {e}")
+
+    # ── Purge Material (hold-to-extrude) ──────────────────────────
+    def _purge_start(self):
+        """Begin continuous extrusion on press: start timer that sends repeated extrude commands."""
+        try:
+            self._purging = True
+            # Send the first extrude command immediately
+            self._purge_extrude_tick()
+            # Start repeating timer for subsequent commands
+            self._purge_timer.start()
+            self.logger.info("Purge started at F500")
+        except Exception as e:
+            self.logger.error(f"Error starting purge: {e}")
+
+    def _purge_stop(self):
+        """Stop continuous extrusion on release."""
+        try:
+            self._purging = False
+            self._purge_timer.stop()
+            self.logger.info("Purge stopped")
+        except Exception as e:
+            self.logger.error(f"Error stopping purge: {e}")
+
+    def _purge_extrude_tick(self):
+        """Send a small extrude command via raw gcode. Called every 200ms.
+
+        Uses absolute extrusion with G92 E0 reset after each move:
+          1. G92 E0    — reset E position to zero
+          2. G1 E2 F500 — extrude 2mm at 500 mm/min
+
+        At F500 (500 mm/min ≈ 8.33 mm/s), a 2mm move takes ~240ms.
+        Sending 2mm every 200ms keeps exactly one move buffered so the
+        extruder runs continuously but stops almost instantly on release.
+        """
+        if not self._purging:
+            return
+        try:
+            self.octoprint_client.gcode(command='G92 E0\nG1 E2 F500')
+        except Exception as e:
+            self.logger.error(f"Error during purge tick: {e}")
+    # ─────────────────────────────────────────────────────────────
 
     def buttonStatusUpdate(self, status):
         """Update ControlScreen UI elements based on printer status"""
