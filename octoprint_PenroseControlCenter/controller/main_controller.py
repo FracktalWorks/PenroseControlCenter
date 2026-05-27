@@ -382,13 +382,37 @@ class MainController(QtCore.QObject):
         so M500 covers any in-memory adjustments not yet written to file.
         """
         try:
-            from utils.printer_config_manager import copy_firmware_files
+            from utils.printer_config_manager import (
+                copy_firmware_files,
+                get_current_extruder_head_selection,
+            )
             
             self.logger.info(f"Performing firmware update for {current_printer}")
-            
+
+            # Preserve the user's currently selected extruder head across the
+            # firmware update. Without this, copy_firmware_files() would leave
+            # whatever EXTRUDER_*.cfg include the shipped template has
+            # uncommented (and would NOT toggle the preserved [mcu toolhead0]
+            # block in the MCU section), silently swapping the active head.
+            current_extruder_head = None
+            try:
+                current_extruder_head = get_current_extruder_head_selection()
+                if current_extruder_head:
+                    self.logger.info(
+                        f"Preserving active extruder head across update: {current_extruder_head}"
+                    )
+                else:
+                    self.logger.warning(
+                        "No active extruder head detected; firmware template default will apply"
+                    )
+            except Exception as head_err:
+                self.logger.warning(
+                    f"Failed to detect current extruder head, falling back to template default: {head_err}"
+                )
+
             # Copy firmware files and OctoPrint configs (restore_octoprint_configs is
             # called internally by copy_firmware_files, no need to call it again here)
-            success = copy_firmware_files(current_printer)
+            success = copy_firmware_files(current_printer, current_extruder_head)
             
             if success:
                 self.logger.info("Firmware files updated successfully, restarting Klipper")
