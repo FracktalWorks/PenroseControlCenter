@@ -633,8 +633,11 @@ class PrinterConfigManager:
                     with open(dest_path, 'r') as f:
                         existing_content = f.read()
                     
-                    # Extract MCU Config section
-                    mcu_start_marker = "########################################\n# MCU Config\n########################################"
+                    # Extract MCU Config section.
+                    # NOTE: match only the first two lines of the header so the
+                    # marker works whether or not extra comment lines appear
+                    # between "# MCU Config" and the closing hash-line.
+                    mcu_start_marker = "########################################\n# MCU Config"
                     save_config_marker = "#*# <---------------------- SAVE_CONFIG ---------------------->"
                     
                     logger.debug(f"Looking for MCU marker in existing file...")
@@ -735,7 +738,7 @@ class PrinterConfigManager:
                         existing_mcu_section, selected_extruder_head)
 
                 logger.info("Replacing template sections with preserved ones")
-                mcu_start_marker = "########################################\n# MCU Config\n########################################"
+                mcu_start_marker = "########################################\n# MCU Config"
                 save_config_marker = "#*# <---------------------- SAVE_CONFIG ---------------------->"
                 
                 if existing_mcu_section and mcu_start_marker in final_content:
