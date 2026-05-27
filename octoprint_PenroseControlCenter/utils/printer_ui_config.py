@@ -124,10 +124,27 @@ SPOOL_HEATER_ELEMENTS = {
 
 # UI elements that should be HIDDEN when the printer is in filament-extruder
 # mode (i.e. they are only relevant to the pellet auger toolhead).
+#
+# Pellet mode has:  [extruder] nozzle heater (T0) + [heater_generic H0] barrel heater
+# Filament mode has: [extruder] nozzle heater (T0) only  – H0 does not exist
+#
+# H1 / tool1 elements are already covered by DUAL_NOZZLE_ELEMENTS (single-nozzle
+# printers hide them regardless of head mode).
 PELLET_ONLY_ELEMENTS = {
+    'home_screen': [
+        # Vertical separator between T0 row and H0 row
+        'toolSeparationLine',
+        # H0 barrel heater temperature display row
+        'H0Label', 'H0TextLabel',
+        'H0TargetTemperature', 'H0ActualTemperature', 'H0TempBar',
+    ],
     'control_screen': [
+        # Pellet runout/flow sensor toggles
         'togglePelletSensorT0Button',
         'togglePelletSensorT1Button',
+        # H0 barrel heater controls – hide the container widget so the whole
+        # row (label + spinbox + preheat buttons) collapses cleanly.
+        'horizontalLayoutWidget_H0',
     ],
 }
 
