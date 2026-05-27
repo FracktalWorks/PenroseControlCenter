@@ -21,8 +21,10 @@ except (ImportError, RuntimeError):
     GPIO = None
 
 from ._version import get_versions
-__version__ = get_versions()['version']
-del get_versions
+_versioneer_info = get_versions()
+__version__ = _versioneer_info['version']
+__commit__ = _versioneer_info.get('full-revisionid') or __version__
+del _versioneer_info, get_versions
 
 
 class StrobeLED(threading.Thread):
@@ -636,14 +638,20 @@ sudo python3 main.py
             PenroseControlCenter=dict(
                 displayName="PenroseControlCenter",
                 displayVersion=self._plugin_version,
-                # version check: github repository
-                type="github_release",
+                # Track commits on the Hybrid-Penrose-600 branch only.
+                # Using github_release here would cause OctoPrint to treat any
+                # new tag on the main branch as a newer version and overwrite
+                # branch-specific changes. github_commit compares commit SHAs
+                # against the HEAD of the specified branch, so main-branch
+                # releases are completely ignored.
+                type="github_commit",
                 user="FracktalWorks",
                 repo="PenroseControlCenter",
-                current=self._plugin_version,
+                branch="Hybrid-Penrose-600",
+                current=__commit__,
 
-                # update method: pip
-                pip="https://github.com/FracktalWorks/PenroseControlCenter/archive/{target_version}.zip"
+                # update method: pip install from branch zip
+                pip="https://github.com/FracktalWorks/PenroseControlCenter/archive/Hybrid-Penrose-600.zip"
             )
         )
 
