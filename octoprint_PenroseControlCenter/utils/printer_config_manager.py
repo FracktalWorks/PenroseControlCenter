@@ -634,37 +634,60 @@ class PrinterConfigManager:
                         existing_content = f.read()
                     
                     # Extract MCU Config section.
-                    # NOTE: match only the first two lines of the header so the
-                    # marker works whether or not extra comment lines appear
-                    # between "# MCU Config" and the closing hash-line.
+                    # Primary marker: match the first two lines of the header so the
+                    # marker works whether or not extra comment lines appear between
+                    # "# MCU Config" and the closing hash-line.
+                    # Fallback: if the header is absent (pre-branch deployments or
+                    # files written before the header was added), locate [mcu] directly
+                    # and include any preceding comment block within 600 chars.
                     mcu_start_marker = "########################################\n# MCU Config"
                     save_config_marker = "#*# <---------------------- SAVE_CONFIG ---------------------->"
-                    
+
                     logger.debug(f"Looking for MCU marker in existing file...")
                     logger.debug(f"MCU marker found: {mcu_start_marker in existing_content}")
                     logger.debug(f"SAVE_CONFIG marker found: {save_config_marker in existing_content}")
-                    
+
+                    mcu_start = -1
                     if mcu_start_marker in existing_content:
                         mcu_start = existing_content.find(mcu_start_marker)
-                        logger.debug(f"MCU marker position: {mcu_start}")
-                        
+                        logger.debug(f"MCU Config header found at position {mcu_start}")
+                    else:
+                        # Fallback: find [mcu] section directly (handles files deployed
+                        # before the # MCU Config comment block was introduced).
+                        mcu_direct = existing_content.find('\n[mcu]\n')
+                        if mcu_direct != -1:
+                            # Try to include the nearest preceding ###...### comment block
+                            pre_mcu = existing_content[:mcu_direct]
+                            last_hash = pre_mcu.rfind('########################################')
+                            if last_hash != -1 and (mcu_direct - last_hash) < 600:
+                                mcu_start = last_hash
+                            else:
+                                mcu_start = mcu_direct + 1  # start at [mcu] itself
+                            logger.warning(
+                                f"MCU Config header not found; falling back to [mcu] "
+                                f"section at position {mcu_start}"
+                            )
+                        else:
+                            logger.warning("Could not locate [mcu] section in existing file")
+
+                    if mcu_start != -1:
                         if save_config_marker in existing_content:
                             save_config_start = existing_content.find(save_config_marker)
                             logger.debug(f"SAVE_CONFIG marker position: {save_config_start}")
-                            
-                            if mcu_start != -1 and save_config_start != -1 and mcu_start < save_config_start:
-                                # Extract MCU section (from MCU Config marker to just before SAVE_CONFIG marker)
+
+                            if mcu_start < save_config_start:
+                                # Extract MCU section (from MCU Config marker to just before SAVE_CONFIG)
                                 existing_mcu_section = existing_content[mcu_start:save_config_start].rstrip()
                                 logger.info(f"Preserved MCU config section ({len(existing_mcu_section)} chars)")
                             else:
-                                # If SAVE_CONFIG comes before MCU (unusual), extract MCU to end
+                                # SAVE_CONFIG appears before MCU (unusual) – grab MCU to end
                                 existing_mcu_section = existing_content[mcu_start:].rstrip()
-                                logger.warning("SAVE_CONFIG found before MCU marker, extracting MCU to end of file")
+                                logger.warning("SAVE_CONFIG found before MCU marker; extracting MCU to end of file")
                         else:
-                            # No SAVE_CONFIG marker, extract MCU section to end of file
+                            # No SAVE_CONFIG marker – extract MCU section to end of file
                             existing_mcu_section = existing_content[mcu_start:].rstrip()
-                            logger.info(f"No SAVE_CONFIG found, preserved MCU config to end ({len(existing_mcu_section)} chars)")
-                            
+                            logger.info(f"No SAVE_CONFIG found; preserved MCU config to end ({len(existing_mcu_section)} chars)")
+
                         # Extract SAVE_CONFIG section separately (everything from SAVE_CONFIG marker to end)
                         if save_config_marker in existing_content:
                             save_config_start = existing_content.find(save_config_marker)
@@ -672,7 +695,7 @@ class PrinterConfigManager:
                                 existing_save_config_section = existing_content[save_config_start:].rstrip()
                                 logger.info(f"Preserved SAVE_CONFIG section ({len(existing_save_config_section)} chars)")
                     else:
-                        logger.warning("MCU Config marker not found in existing file")
+                        logger.warning("Could not determine MCU section start; MCU config will not be preserved")
                     
                 except Exception as e:
                     logger.warning(f"Could not extract existing MCU config and SAVE_CONFIG: {e}")

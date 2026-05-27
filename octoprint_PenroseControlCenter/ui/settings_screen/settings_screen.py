@@ -119,6 +119,7 @@ class SettingsScreen(QWidget):
             # Import the required modules for printer configuration
             from utils.printer_config_manager import (
                 get_current_printer_selection,
+                get_current_extruder_head_selection,
                 get_printer_display_name,
                 copy_firmware_files,
                 get_printer_config_manager,
@@ -162,10 +163,19 @@ class SettingsScreen(QWidget):
                 overlay=True
             ):
                 self.logger.info(f"User confirmed restoration of print settings for {current_printer}")
-                
+
+                # Preserve the currently active extruder head so a settings
+                # restore does not silently revert to the template's default
+                # (PELLET) and does not invalidate the [mcu toolhead0] UUID.
+                current_head = None
+                try:
+                    current_head = get_current_extruder_head_selection()
+                except Exception as head_err:
+                    self.logger.warning(f"Could not detect current extruder head: {head_err}")
+
                 # Use the same system as printer setup wizard to restore files
-                self.logger.info(f"Copying firmware files for {current_printer}...")
-                success = copy_firmware_files(current_printer)
+                self.logger.info(f"Copying firmware files for {current_printer} (head={current_head})...")
+                success = copy_firmware_files(current_printer, current_head)
                 
                 # Also restore OctoPrint configurations
                 if success:
