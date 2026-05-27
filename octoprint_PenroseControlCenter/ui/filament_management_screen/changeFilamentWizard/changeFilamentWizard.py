@@ -238,11 +238,15 @@ class ChangeFilamentWizard(QWidget):
             if self.changeFilamentComboBox.findText(LOADED_FILAMENT_LABEL) == -1:
                 self._set_tool_temperature()
             self.stackedWidget.setCurrentWidget(self.changeFilamentProgressPage)
+            # Disconnect before reconnecting to prevent duplicate connections if user
+            # navigates back and taps Load/Unload again.
+            self._disconnect_temperature_signal()
             self.model.temperatures_updated.connect(self.updateTemperature)
             self.changeFilamentStatus.setText(f"Heating Tool {self.activeExtruder}, Please Wait...")
             self.changeFilamentNameOperation.setText(f"Loading {self.changeFilamentComboBox.currentText()}")
-            self.changeFilamentHeatingFlag = True
+            # Set loadFlag BEFORE heatingFlag so updateTemperature always sees the correct operation
             self.loadFlag = True
+            self.changeFilamentHeatingFlag = True
         except Exception as e:
             # On error, ensure no persistence happens if user taps Done
             self.loadFlag = None
@@ -258,11 +262,15 @@ class ChangeFilamentWizard(QWidget):
             if self.changeFilamentComboBox.findText(LOADED_FILAMENT_LABEL) == -1:
                 self._set_tool_temperature()
             self.stackedWidget.setCurrentWidget(self.changeFilamentProgressPage)
+            # Disconnect before reconnecting to prevent duplicate connections if user
+            # navigates back and taps Load/Unload again.
+            self._disconnect_temperature_signal()
             self.model.temperatures_updated.connect(self.updateTemperature)
             self.changeFilamentStatus.setText(f"Heating Tool {self.activeExtruder}, Please Wait...")
             self.changeFilamentNameOperation.setText(f"Unloading {self.changeFilamentComboBox.currentText()}")
-            self.changeFilamentHeatingFlag = True
+            # Set loadFlag BEFORE heatingFlag so updateTemperature always sees the correct operation
             self.loadFlag = False
+            self.changeFilamentHeatingFlag = True
         except Exception as e:
             # On error, ensure no persistence happens if user taps Done
             self.loadFlag = None
