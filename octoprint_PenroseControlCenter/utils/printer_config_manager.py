@@ -110,6 +110,51 @@ class PrinterConfigManager:
             logger.error(f"Error getting available printers: {e}")
             
         return sorted(available_printers)
+
+    # ------------------------------------------------------------------
+    # EXTRUDER HEAD SUPPORT (swappable pellet / filament toolheads)
+    # Mirrors the PRINTER_*.cfg pattern using EXTRUDER_*.cfg files.
+    # ------------------------------------------------------------------
+
+    def get_available_extruder_heads(self) -> List[str]:
+        """Get list of available extruder head configurations from the firmware folder.
+
+        Scans for files named EXTRUDER_*.cfg (e.g. EXTRUDER_PELLET.cfg,
+        EXTRUDER_FILAMENT.cfg) and returns the short head name ("PELLET",
+        "FILAMENT", ...). Returns an empty list if no extruder head files
+        are present (i.e. the printer does not support head swapping).
+        """
+        heads: List[str] = []
+        try:
+            if os.path.exists(self.firmware_path):
+                for file in os.listdir(self.firmware_path):
+                    if file.startswith("EXTRUDER_") and file.endswith(".cfg"):
+                        heads.append(file[9:-4])  # Strip "EXTRUDER_" + ".cfg"
+        except Exception as e:
+            logger.error(f"Error getting available extruder heads: {e}")
+        return sorted(heads)
+
+    def get_extruder_head_display_name(self, head_name: str) -> str:
+        """Convert an extruder head identifier to a friendly display name."""
+        if not head_name:
+            return ""
+        return head_name.replace("_", " ").title() + " Extruder"
+
+    def get_current_extruder_head_selection(self) -> Optional[str]:
+        """Get the currently active extruder head from printer.cfg."""
+        try:
+            if os.path.exists(self.printer_cfg_path):
+                with open(self.printer_cfg_path, 'r') as f:
+                    content = f.read()
+                for line in content.split('\n'):
+                    stripped = line.strip()
+                    if stripped.startswith('[include EXTRUDER_') and not stripped.startswith('#'):
+                        match = re.search(r'EXTRUDER_(\w+)\.cfg', stripped)
+                        if match:
+                            return match.group(1)
+        except Exception as e:
+            logger.error(f"Error getting current extruder head selection: {e}")
+        return None
     
     def get_printer_display_name(self, printer_name: str) -> str:
         """Convert printer name to display name by extracting from Klipper config."""
@@ -554,8 +599,21 @@ class PrinterConfigManager:
     # FILE DEPLOYMENT AND MANAGEMENT
     # ========================================================================
     
-    def update_printer_cfg(self, source_path: str, dest_path: str, selected_printer: str, preserve_mcu: bool = True) -> bool:
-        """Update printer.cfg with new printer selection while preserving MCU config and SAVE_CONFIG sections."""
+    def update_printer_cfg(self, source_path: str, dest_path: str, selected_printer: str,
+                           preserve_mcu: bool = True,
+                           selected_extruder_head: Optional[str] = None) -> bool:
+        """Update printer.cfg with new printer selection while preserving MCU config and SAVE_CONFIG sections.
+
+        If ``selected_extruder_head`` is provided, the matching
+        ``[include EXTRUDER_*.cfg]`` line is uncommented (all other
+        EXTRUDER_*.cfg includes are commented out) using the same toggle
+        philosophy as the printer include. Additionally, the
+        ``[mcu toolhead0]`` block inside the preserved MCU section is
+        auto-uncommented when the FILAMENT head is selected and
+        auto-commented when any other head is selected. This keeps the
+        UUID value the user filled in once and avoids Klipper errors
+        about an unreferenced MCU when the pellet head is active.
+        """
         try:
             if not os.path.exists(source_path):
                 logger.error(f"Source file not found: {source_path}")
@@ -646,6 +704,20 @@ class PrinterConfigManager:
                             updated_lines.append(line)
                         else:
                             updated_lines.append('#' + line)
+                elif selected_extruder_head is not None and 'EXTRUDER_' in line and '.cfg' in line:
+                    # Apply the same toggle logic to EXTRUDER_*.cfg includes
+                    stripped = line.strip()
+                    is_target = f'EXTRUDER_{selected_extruder_head}.cfg' in line
+                    if stripped.startswith('#'):
+                        if is_target:
+                            updated_lines.append(line.replace('#', '', 1).lstrip())
+                        else:
+                            updated_lines.append(line)
+                    else:
+                        if is_target:
+                            updated_lines.append(line)
+                        else:
+                            updated_lines.append('#' + line)
                 else:
                     updated_lines.append(line)
             
@@ -654,6 +726,14 @@ class PrinterConfigManager:
             
             # If we have preserved sections, replace the template sections with the existing ones
             if existing_mcu_section or existing_save_config_section:
+                # Auto-toggle [mcu toolhead0] comment state in the preserved MCU
+                # section based on the selected extruder head. Only the FILAMENT
+                # head uses the CAN toolhead; for any other head the block must
+                # be commented out or Klipper will error on the unreferenced MCU.
+                if existing_mcu_section and selected_extruder_head is not None:
+                    existing_mcu_section = self._toggle_toolhead_mcu(
+                        existing_mcu_section, selected_extruder_head)
+
                 logger.info("Replacing template sections with preserved ones")
                 mcu_start_marker = "########################################\n# MCU Config\n########################################"
                 save_config_marker = "#*# <---------------------- SAVE_CONFIG ---------------------->"
@@ -718,9 +798,52 @@ class PrinterConfigManager:
         except Exception as e:
             logger.error(f"Error updating printer.cfg: {e}")
             return False
+
+    def _toggle_toolhead_mcu(self, mcu_section: str, selected_extruder_head: str) -> str:
+        """Uncomment ``[mcu toolhead0]`` block for FILAMENT head, comment it for others.
+
+        Operates on the MCU section text and returns the modified text.
+        Toggles the ``[mcu toolhead0]`` header line and any immediately
+        following non-blank config lines (``canbus_uuid: ...`` etc.) until
+        a blank line or the next ``[`` section header is reached.
+        """
+        want_uncommented = (selected_extruder_head or '').upper() == 'FILAMENT'
+        lines = mcu_section.split('\n')
+        out_lines: List[str] = []
+        in_block = False
+        for line in lines:
+            stripped = line.lstrip()
+            # Detect start of the [mcu toolhead0] block (commented or not)
+            is_header = (
+                stripped.lstrip('#').lstrip().startswith('[mcu toolhead0]')
+            )
+            if is_header:
+                in_block = True
+                if want_uncommented:
+                    out_lines.append(stripped.lstrip('#').lstrip())
+                else:
+                    out_lines.append('#' + stripped.lstrip('#').lstrip() if not stripped.startswith('#') else line)
+                continue
+            if in_block:
+                # End of block: blank line or a new section header
+                if stripped == '' or (stripped.lstrip('#').lstrip().startswith('[') and not stripped.lstrip('#').lstrip().startswith('[mcu toolhead0]')):
+                    in_block = False
+                    out_lines.append(line)
+                    continue
+                if want_uncommented:
+                    out_lines.append(stripped.lstrip('#').lstrip())
+                else:
+                    out_lines.append('#' + stripped.lstrip('#').lstrip() if not stripped.startswith('#') else line)
+            else:
+                out_lines.append(line)
+        toggled = '\n'.join(out_lines)
+        action = 'uncommented' if want_uncommented else 'commented'
+        logger.debug(f"[mcu toolhead0] block {action} for head '{selected_extruder_head}'")
+        return toggled
     
-    def copy_firmware_files(self, selected_printer: str) -> bool:
-        """Copy all firmware files and update printer selection."""
+    def copy_firmware_files(self, selected_printer: str,
+                            selected_extruder_head: Optional[str] = None) -> bool:
+        """Copy all firmware files and update printer / extruder head selection."""
         try:
             if not os.path.exists(self.firmware_path):
                 logger.error(f"Firmware path not found: {self.firmware_path}")
@@ -747,7 +870,9 @@ class PrinterConfigManager:
             source_printer_cfg = os.path.join(self.firmware_path, 'printer.cfg')
             dest_printer_cfg = self.printer_cfg_path
             
-            if not self.update_printer_cfg(source_printer_cfg, dest_printer_cfg, selected_printer):
+            if not self.update_printer_cfg(source_printer_cfg, dest_printer_cfg,
+                                           selected_printer,
+                                           selected_extruder_head=selected_extruder_head):
                 return False
                 
             # Update OctoPrint configurations
@@ -1119,9 +1244,22 @@ def get_current_printer_selection() -> Optional[str]:
     """Get the currently active printer configuration."""
     return get_printer_config_manager().get_current_printer_selection()
 
-def copy_firmware_files(selected_printer: str) -> bool:
-    """Copy all firmware files and update printer selection."""
-    return get_printer_config_manager().copy_firmware_files(selected_printer)
+def copy_firmware_files(selected_printer: str,
+                        selected_extruder_head: Optional[str] = None) -> bool:
+    """Copy all firmware files and update printer / extruder head selection."""
+    return get_printer_config_manager().copy_firmware_files(selected_printer, selected_extruder_head)
+
+def get_available_extruder_heads() -> List[str]:
+    """Get list of available extruder head configurations."""
+    return get_printer_config_manager().get_available_extruder_heads()
+
+def get_extruder_head_display_name(head_name: str) -> str:
+    """Convert extruder head identifier to display name."""
+    return get_printer_config_manager().get_extruder_head_display_name(head_name)
+
+def get_current_extruder_head_selection() -> Optional[str]:
+    """Get the currently active extruder head."""
+    return get_printer_config_manager().get_current_extruder_head_selection()
 
 def get_printer_config_from_klipper() -> Optional[Dict[str, Any]]:
     """Get complete printer configuration from active Klipper config."""

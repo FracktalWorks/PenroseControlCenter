@@ -11,7 +11,10 @@ from utils.printer_config_manager import (
     copy_firmware_files, 
     get_current_printer_selection,
     get_printer_config_manager,
-    restore_octoprint_configs
+    restore_octoprint_configs,
+    get_available_extruder_heads,
+    get_extruder_head_display_name,
+    get_current_extruder_head_selection,
 )
 
 logger = get_logger(__name__)
@@ -43,12 +46,15 @@ class PrinterSetup(QWidget):
         # Initialize UI components using findChild
         self.backButton = self.findChild(QPushButton, "backButton")
         self.printerComboBox = self.findChild(QComboBox, "printerComboBox")
+        self.extruderComboBox = self.findChild(QComboBox, "extruderComboBox")
+        self.extruderLabel = self.findChild(QLabel, "extruderLabel")
         self.cancelButton = self.findChild(QPushButton, "cancelButton")
         self.setButton = self.findChild(QPushButton, "setButton")
         self.currentPrinterLabel = self.findChild(QLabel, "currentPrinterLabel")
         self.statusLabel = self.findChild(QLabel, "statusLabel")
 
-        # Validate UI components
+        # Validate UI components (extruder widgets are optional - not all
+        # printers ship with swappable EXTRUDER_*.cfg files)
         check_ui_elements(self, [
             self.backButton,
             self.printerComboBox,
@@ -65,6 +71,7 @@ class PrinterSetup(QWidget):
 
         # Populate printer options
         self.populate_printer_options()
+        self.populate_extruder_options()
         
         # Update current printer display
         self.update_current_printer_display()
@@ -121,13 +128,66 @@ class PrinterSetup(QWidget):
             self.statusLabel.setText("Error loading printer configurations")
             self.setButton.setEnabled(False)
 
+    def populate_extruder_options(self):
+        """Populate the extruder head combobox with available EXTRUDER_*.cfg files.
+
+        Hides the extruder row entirely if the firmware folder contains no
+        EXTRUDER_*.cfg files (i.e. the printer does not support head swapping).
+        """
+        try:
+            if self.extruderComboBox is None:
+                return
+
+            self.extruderComboBox.clear()
+            heads = get_available_extruder_heads()
+            self.logger.debug(f"Available extruder heads: {heads}")
+
+            if not heads:
+                # No swappable heads - hide the row
+                self.extruderComboBox.setVisible(False)
+                if self.extruderLabel is not None:
+                    self.extruderLabel.setVisible(False)
+                return
+
+            self.extruderComboBox.setVisible(True)
+            if self.extruderLabel is not None:
+                self.extruderLabel.setVisible(True)
+
+            for head_name in heads:
+                display_name = get_extruder_head_display_name(head_name)
+                self.extruderComboBox.addItem(display_name, head_name)
+
+            current_head = get_current_extruder_head_selection()
+            self.logger.debug(f"Current active extruder head: {current_head}")
+            selection_set = False
+            if current_head:
+                for i in range(self.extruderComboBox.count()):
+                    if self.extruderComboBox.itemData(i) == current_head:
+                        self.extruderComboBox.setCurrentIndex(i)
+                        selection_set = True
+                        break
+            if not selection_set and self.extruderComboBox.count() > 0:
+                self.extruderComboBox.setCurrentIndex(0)
+
+            # Only one head available - lock the selector
+            self.extruderComboBox.setEnabled(len(heads) > 1)
+
+        except Exception as e:
+            self.logger.error(f"Error populating extruder options: {e}")
+
     def update_current_printer_display(self):
         """Update the display showing the currently active printer."""
         try:
             current_printer = get_current_printer_selection()
+            current_head = get_current_extruder_head_selection()
             if current_printer:
                 display_name = get_printer_display_name(current_printer)
-                self.currentPrinterLabel.setText(f"Current Printer: {display_name}")
+                if current_head:
+                    head_display = get_extruder_head_display_name(current_head)
+                    self.currentPrinterLabel.setText(
+                        f"Current Printer: {display_name}  |  Head: {head_display}")
+                else:
+                    self.currentPrinterLabel.setText(f"Current Printer: {display_name}")
             else:
                 self.currentPrinterLabel.setText("Current Printer: Unknown")
         except Exception as e:
@@ -135,13 +195,19 @@ class PrinterSetup(QWidget):
             self.currentPrinterLabel.setText("Current Printer: Error")
 
     def cancel_selection(self):
-        """Reset the combobox to the currently active printer and go back."""
+        """Reset the comboboxes to the currently active selections and go back."""
         try:
             current_printer = get_current_printer_selection()
             if current_printer:
                 for i in range(self.printerComboBox.count()):
                     if self.printerComboBox.itemData(i) == current_printer:
                         self.printerComboBox.setCurrentIndex(i)
+                        break
+            current_head = get_current_extruder_head_selection()
+            if current_head and self.extruderComboBox is not None:
+                for i in range(self.extruderComboBox.count()):
+                    if self.extruderComboBox.itemData(i) == current_head:
+                        self.extruderComboBox.setCurrentIndex(i)
                         break
             self.go_back()
         except Exception as e:
@@ -156,24 +222,35 @@ class PrinterSetup(QWidget):
             
             selected_printer = self.printerComboBox.currentData()  # This is now just the printer name
             selected_display_name = self.printerComboBox.currentText()
+
+            # Resolve extruder head selection (may be None if no heads available)
+            selected_head = None
+            selected_head_display = None
+            if self.extruderComboBox is not None and self.extruderComboBox.isVisible() \
+                    and self.extruderComboBox.count() > 0:
+                selected_head = self.extruderComboBox.currentData()
+                selected_head_display = self.extruderComboBox.currentText()
             
             # Confirm the change with the user
             manager = get_printer_config_manager()
             firmware_files = manager.get_firmware_files()
-            if not dialog.WarningYesNo(
-                self, 
-                f"Are you sure you want to change the printer configuration to '{selected_display_name}'?\n\n"
-                f"This will copy {len(firmware_files)} configuration files and update printer.cfg.\n"
-                "The printer may require a firmware restart.",
-                overlay=True
-            ):
+            confirm_msg = (
+                f"Are you sure you want to change the printer configuration to '{selected_display_name}'"
+            )
+            if selected_head_display:
+                confirm_msg += f" with '{selected_head_display}'"
+            confirm_msg += (
+                f"?\n\nThis will copy {len(firmware_files)} configuration files and update printer.cfg.\n"
+                "The printer may require a firmware restart."
+            )
+            if not dialog.WarningYesNo(self, confirm_msg, overlay=True):
                 return
             
             self.statusLabel.setText("Copying firmware files and applying configuration...")
             self.setButton.setEnabled(False)
             
-            # Apply the configuration
-            success = copy_firmware_files(selected_printer)
+            # Apply the configuration (printer + extruder head together)
+            success = copy_firmware_files(selected_printer, selected_head)
             
             # Also restore OctoPrint configurations for the selected printer
             if success:
@@ -258,6 +335,7 @@ class PrinterSetup(QWidget):
         super().showEvent(event)
         try:
             self.populate_printer_options()
+            self.populate_extruder_options()
             self.update_current_printer_display()
             self.check_firmware_files_status()
         except Exception as e:

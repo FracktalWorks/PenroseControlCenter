@@ -13,6 +13,40 @@ from PyQt5.QtWidgets import QWidget
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Extruder head mode (pellet vs filament) - hybrid Penrose support.
+# The active head is determined from the [include EXTRUDER_*.cfg] line in
+# /home/pi/printer.cfg, which the Printer Setup UI toggles. We default to
+# pellet mode when the value cannot be read so existing single-head
+# printers behave exactly as before.
+# ---------------------------------------------------------------------------
+
+def _get_active_extruder_head():
+    """Return the active extruder head identifier (e.g. 'PELLET', 'FILAMENT') or None."""
+    try:
+        # Local import to avoid hard dependency cycles at module import time
+        from utils.printer_config_manager import get_current_extruder_head_selection
+        head = get_current_extruder_head_selection()
+        return head.upper() if isinstance(head, str) else None
+    except Exception as exc:
+        logger.debug(f"Could not resolve active extruder head: {exc}")
+        return None
+
+def is_filament_extruder_mode():
+    """True when the printer is configured with the filament drive toolhead."""
+    return _get_active_extruder_head() == 'FILAMENT'
+
+def is_pellet_extruder_mode():
+    """True when the printer is configured with the pellet auger toolhead.
+
+    Defaults to True when no EXTRUDER_*.cfg toggle is in use (i.e. legacy
+    single-head printers) so existing pellet UI continues to work.
+    """
+    head = _get_active_extruder_head()
+    if head is None:
+        return True
+    return head == 'PELLET'
+
 def is_dual_nozzle_printer():
     """Check if the printer is configured for dual nozzle operation."""
     # Access the current value dynamically to pick up changes from Klipper config loading
@@ -87,6 +121,19 @@ SPOOL_HEATER_ELEMENTS = {
         'spoolActualTemperature', 'spoolTempBar'
     ]
 }
+
+# UI elements that should be HIDDEN when the printer is in filament-extruder
+# mode (i.e. they are only relevant to the pellet auger toolhead).
+PELLET_ONLY_ELEMENTS = {
+    'control_screen': [
+        'togglePelletSensorT0Button',
+        'togglePelletSensorT1Button',
+    ],
+}
+
+# UI elements that should be HIDDEN when the printer is in pellet-extruder
+# mode (reserved for future filament-only widgets).
+FILAMENT_ONLY_ELEMENTS = {}
 
 def hide_dual_nozzle_elements(widget, element_names):
     """
@@ -265,6 +312,37 @@ def apply_nozzle_config_to_screen(widget, screen_name):
     hide_heater_ring_elements(widget, get_heater_ring_elements(screen_name))
     hide_heated_chamber_elements(widget, get_heated_chamber_elements(screen_name))
     hide_spool_heater_elements(widget, get_spool_heater_elements(screen_name))
+    # Also apply extruder-head configuration so each screen only needs one wiring call.
+    apply_extruder_head_config_to_screen(widget, screen_name)
+
+
+def _set_elements_visible(widget, element_names, visible):
+    """Show or hide a list of named child widgets."""
+    for element_name in element_names:
+        element = getattr(widget, element_name, None)
+        if element is None:
+            element = widget.findChild(QWidget, element_name)
+        if element is None:
+            logger.debug(f"Element not found while toggling visibility: {element_name}")
+            continue
+        try:
+            element.setVisible(visible)
+        except Exception as exc:
+            logger.error(f"Error toggling visibility of {element_name}: {exc}")
+
+
+def apply_extruder_head_config_to_screen(widget, screen_name):
+    """Show / hide pellet-only and filament-only elements for a screen.
+
+    Pellet-only widgets are hidden in filament mode; filament-only widgets
+    are hidden in pellet mode.
+    """
+    pellet_only = PELLET_ONLY_ELEMENTS.get(screen_name, [])
+    filament_only = FILAMENT_ONLY_ELEMENTS.get(screen_name, [])
+    pellet_mode = is_pellet_extruder_mode()
+    _set_elements_visible(widget, pellet_only, pellet_mode)
+    _set_elements_visible(widget, filament_only, not pellet_mode)
+
 
 def apply_nozzle_config_to_all_screens(main_window):
     """

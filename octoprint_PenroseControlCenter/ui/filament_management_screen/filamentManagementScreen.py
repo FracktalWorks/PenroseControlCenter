@@ -6,14 +6,20 @@ from PyQt5.QtCore import Qt
 from PyQt5 import uic
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer
+from utils.printer_ui_config import (
+    apply_nozzle_config_to_screen,
+    is_dual_nozzle_printer,
+    is_filament_extruder_mode,
+    is_pellet_extruder_mode,
+)
 from utils import dialog
 from utils import styles
 import config
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QFormLayout, QComboBox, QHBoxLayout
 
-# Import sub-screens (only nozzle change wizard needed now)
+# Import sub-screens
 from ui.filament_management_screen.nozzleChangeWizard.nozzleChangeWizard import NozzleChangeWizard
+from ui.filament_management_screen.changeFilamentWizard.changeFilamentWizard import ChangeFilamentWizard
 
 logger = get_logger(__name__)
 
@@ -84,9 +90,14 @@ class filamentManagementScreen(QWidget):
         self.screens = {}
         self._initialize_sub_screens()
 
-        # Connect material buttons to pellet loading dialog (replaces filament change wizard)
-        self.changeTool0MaterialBayA.clicked.connect(lambda: self._show_pellet_load_dialog("tool0"))
-        self.changeTool1MaterialBayX.clicked.connect(lambda: self._show_pellet_load_dialog("tool1"))
+        # Connect material buttons. Routing depends on extruder head mode:
+        #   - Pellet head: open the lightweight pellet loading dialog.
+        #   - Filament head: open the Dragon-style ChangeFilamentWizard
+        #     (multi-page heating / load / extrude / retract flow).
+        self.changeTool0MaterialBayA.clicked.connect(
+            lambda: self._on_material_button_clicked("tool0"))
+        self.changeTool1MaterialBayX.clicked.connect(
+            lambda: self._on_material_button_clicked("tool1"))
 
         self.changeTool0Button.clicked.connect(
             lambda: self.show_material_nozzle_screen(target_screen="nozzle_change", params={"tool": "tool0"})
@@ -114,8 +125,9 @@ class filamentManagementScreen(QWidget):
             self.main_window.printer_model.tool_bay_state_changed.connect(self._on_tool_state_changed)
             # Also react to printer status to enable/disable change buttons
             self.main_window.printer_model.status_updated.connect(self._on_status_updated)
-            # Connect to pellet sensor state signal for real-time updates
-            self.main_window.printer_model.pellet_sensor_state.connect(self._on_pellet_sensor_state)
+            # Pellet sensor signal is only meaningful when the pellet head is active.
+            if is_pellet_extruder_mode():
+                self.main_window.printer_model.pellet_sensor_state.connect(self._on_pellet_sensor_state)
         except Exception as e:
             self.logger.error(f"Failed connecting tool state signals: {e}")
         # Apply current state immediately in case the signal fired before this screen connected
@@ -157,16 +169,27 @@ class filamentManagementScreen(QWidget):
         try:
             self.material_nozzle_stacked_widget.setCurrentWidget(self.main_material_nozzle_page)
             self.logger.debug("Reset stacked widget to main_material_nozzle_page on show")
-            # Poll pellet sensors when screen is shown
-            self._poll_pellet_sensors()
+            # Pellet sensor polling is only meaningful in pellet mode
+            if is_pellet_extruder_mode():
+                self._poll_pellet_sensors()
         except Exception as e:
             self.logger.error(f"Error in showEvent: {e}")
 
     def _initialize_sub_screens(self):
-        """Initialize all filament/nozzle sub-screens"""
+        """Initialize all filament/nozzle sub-screens.
+
+        - NozzleChangeWizard is always needed (nozzle swap is head-agnostic).
+        - ChangeFilamentWizard (Dragon-style heating / load / extrude / retract
+          flow) is only instantiated when the filament toolhead is active;
+          pellet head uses the lightweight `_show_pellet_load_dialog` flow.
+        """
         try:
-            # Only nozzle change wizard needed - pellet loading uses a dialog
             self.screens["nozzle_change"] = NozzleChangeWizard(self.main_window)
+            if is_filament_extruder_mode():
+                self.screens["filament_change"] = ChangeFilamentWizard(self.main_window)
+                self.logger.info("Filament extruder mode: ChangeFilamentWizard initialized")
+            else:
+                self.logger.info("Pellet extruder mode: skipping ChangeFilamentWizard")
 
             # Add each screen to the stacked widget
             for name, screen in self.screens.items():
@@ -175,6 +198,21 @@ class filamentManagementScreen(QWidget):
             
         except Exception as e:
             self.logger.exception(f"Error initializing sub-screens: {e}")
+
+    def _on_material_button_clicked(self, tool: str):
+        """Route the material button click based on the active extruder head."""
+        try:
+            if is_filament_extruder_mode():
+                # Dragon-style filament change wizard
+                self.show_material_nozzle_screen(
+                    target_screen="filament_change",
+                    params={"tool": tool},
+                )
+            else:
+                # Original pellet loading dialog
+                self._show_pellet_load_dialog(tool)
+        except Exception as e:
+            self.logger.error(f"Error routing material button for {tool}: {e}")
 
     def _open_loading_dialog(self, message="Please wait, loading..."):
         """Show a lightweight non-blocking loading dialog using utils.dialog.
