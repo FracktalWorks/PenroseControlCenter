@@ -92,7 +92,13 @@ class PrinterModel(QObject):
         # Tool state persistence
         # self.status_options = ["Empty", "Unknown", "Loaded", "Staged"]
         self.status_options = ["Empty", "Loaded"]
-        self.nozzle_options = ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]
+        # Nozzle option lists per extruder head. Selected dynamically via the
+        # `nozzle_options` property based on the active extruder mode so the
+        # nozzle change wizard / edit dialogs show the right choices.
+        #   Pellet head: large pellet nozzles (matches what's machined for Penrose).
+        #   Filament head: matches Dragon's filament-extruder option set.
+        self._pellet_nozzle_options = ["0.6", "0.8", "1.0", "1.5", "2.0", "2.5", "3.0", "5.0"]
+        self._filament_nozzle_options = ["0.25", "0.4", "0.6", "0.8", "1.0"]
         # Nested per-bay structure per tool; defaults reflect current A/B mapping
         self.tools = {
             "tool0": {
@@ -145,6 +151,22 @@ class PrinterModel(QObject):
         
         # Ring heater power storage
         self.ring_heater_power = 0  # Default 0 (0-255 range)
+
+    @property
+    def nozzle_options(self):
+        """Return the nozzle size list appropriate for the active extruder head.
+
+        Filament mode mirrors the Dragon control center options; pellet mode
+        exposes the larger pellet-nozzle range. Evaluated lazily so a head
+        swap (without restart) is reflected immediately in the next dialog.
+        """
+        try:
+            from utils.printer_ui_config import is_filament_extruder_mode
+            if is_filament_extruder_mode():
+                return list(self._filament_nozzle_options)
+        except Exception:
+            pass
+        return list(self._pellet_nozzle_options)
 
     # --- Pellet sensor preference setters (called by controller/UI) -------
     def set_pellet_sensor_t0_pref(self, enabled: bool, persist: bool = True):
