@@ -428,18 +428,44 @@ class filamentManagementScreen(QWidget):
     # --- Pellet Loading Dialog ---
     def _show_pellet_load_dialog(self, tool: str):
         """Show a dialog to control the line vac for loading pellets into the hopper.
-        
+
+        While the dialog is open the corresponding pellet level sensor is
+        temporarily disabled so its `insert_gcode` (which calls
+        `_PELLET_STOP_REFILL` -> `SET_PIN ... VALUE=0`) doesn't cut off the
+        vac mid-load while the user is still holding the button. The sensor
+        is re-enabled per the user's stored preference when the dialog closes.
+
         Args:
             tool: "tool0" or "tool1"
         """
-        tool_num = "0" if tool == "tool0" else "1"
+        # Safety: pellet mode only. In filament mode the relay/vac pins are
+        # not declared, so SET_PIN would error in Klipper.
+        if not is_pellet_extruder_mode():
+            self.logger.warning(
+                "_show_pellet_load_dialog called outside pellet mode; ignoring")
+            return
+
         tool_name = "Left (T0)" if tool == "tool0" else "Right (T1)"
         vac_pin = "pellet_vac_left" if tool == "tool0" else "pellet_vac_right"
-        
+        sensor_name = "pellet_sensor_left" if tool == "tool0" else "pellet_sensor_right"
+
         self.logger.info(f"Opening pellet load dialog for {tool}")
-        
+
         # Track vac state
         self._pellet_vac_on = False
+
+        # Disable the matching pellet level sensor for the duration of the
+        # dialog so its auto-stop on hopper-full doesn't interrupt a manual
+        # hold-to-load. The user's persistent preference is reapplied when
+        # the dialog closes via apply_pellet_sensor_state().
+        try:
+            self.octoprint_client.gcode(
+                command=f'SET_FILAMENT_SENSOR SENSOR={sensor_name} ENABLE=0')
+            self.logger.debug(
+                f"Disabled {sensor_name} for manual pellet load")
+        except Exception as e:
+            self.logger.error(
+                f"Failed disabling {sensor_name} for manual load: {e}")
         
         # Create dialog
         dlg = QDialog(self)
@@ -476,9 +502,10 @@ class filamentManagementScreen(QWidget):
         instructions.setAlignment(Qt.AlignCenter)
         layout.addWidget(instructions)
         
-        # Toggle button for line vac
+        # Toggle button for line vac. NOT checkable: we only care about
+        # pressed/released so the vac mirrors finger-down/up exactly.
         self._vac_button = QPushButton("Hold to Load Pellets")
-        self._vac_button.setCheckable(True)
+        self._vac_button.setCheckable(False)
         self._vac_button.setMinimumHeight(60)
         
         def on_vac_pressed():
@@ -496,7 +523,6 @@ class filamentManagementScreen(QWidget):
             try:
                 self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
                 self._vac_button.setText("Hold to Load Pellets")
-                self._vac_button.setChecked(False)
                 self._pellet_vac_on = False
                 self.logger.info(f"Line vac OFF for {tool}")
                 # Poll sensors after loading to update status
@@ -517,17 +543,32 @@ class filamentManagementScreen(QWidget):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
         
-        # Ensure vac is off when dialog closes (VALUE=0 = relay OFF with inverted pin)
+        # Ensure vac is off and restore sensor state when dialog closes.
         def on_dialog_finished():
-            if self._pellet_vac_on:
-                try:
-                    self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
-                    self.logger.info(f"Line vac OFF (dialog closed) for {tool}")
-                except Exception as e:
-                    self.logger.error(f"Failed to turn off line vac on close: {e}")
-        
+            # Always force vac OFF on close, even if we think it's already off,
+            # to defend against missed release events.
+            try:
+                self.octoprint_client.gcode(command=f'SET_PIN PIN={vac_pin} VALUE=0')
+                self.logger.info(f"Line vac OFF (dialog closed) for {tool}")
+            except Exception as e:
+                self.logger.error(f"Failed to turn off line vac on close: {e}")
+            # Restore the user's persistent pellet sensor preference.
+            try:
+                if hasattr(self.main_window, 'controller') and self.main_window.controller:
+                    self.main_window.controller.apply_pellet_sensor_state()
+                    self.logger.debug(
+                        "Restored pellet sensor preferences after manual load")
+            except Exception as e:
+                self.logger.error(
+                    f"Failed restoring pellet sensor state on close: {e}")
+            # Refresh the on-screen pellet status pill.
+            try:
+                self._poll_pellet_sensors()
+            except Exception:
+                pass
+
         dlg.finished.connect(on_dialog_finished)
-        
+
         dlg.exec_()
 
     # --- New: Edit dialog to sync reality without wizard ---

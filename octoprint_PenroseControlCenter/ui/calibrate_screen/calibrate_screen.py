@@ -197,11 +197,12 @@ class CalibrateScreen(QWidget):
             self.logger.info(f"CalibrateScreen: Klipper state changed to: '{state}' (normalized: '{state_lower}'), is_ready: {is_ready}")
             
             # List all calibration buttons that should be disabled when Klipper is not ready
-            # Keep the back button always enabled
-            # inputShaperCalibrateButton excluded - permanently disabled for now
+            # Keep the back button always enabled.
+            # inputShaperCalibrateButton is handled separately because it also
+            # depends on the active extruder head (only the filament CAN toolhead
+            # carries an ADXL345 + [resonance_tester]; pellet head has neither).
             calibration_buttons = [
                 self.calibrationWizardButton,
-                # self.inputShaperCalibrateButton,  # Temporarily disabled
                 self.cameraToolOffsetCalibrateButton,
                 self.nozzleOffsetButton,
                 self.toolOffsetZButton,
@@ -210,11 +211,20 @@ class CalibrateScreen(QWidget):
                 self.toolZOffsetWizardButton,
                 self.zProbeOffsetWizardButton
             ]
-            
+
             # Enable/disable calibration buttons based on Klipper state
             for button in calibration_buttons:
                 if button:  # Check if button exists (some may be None)
                     button.setEnabled(is_ready)
+
+            # Resonance / Input Shaper: only available in filament mode
+            if self.inputShaperCalibrateButton:
+                try:
+                    from utils.printer_ui_config import is_filament_extruder_mode
+                    shaper_available = is_filament_extruder_mode()
+                except Exception:
+                    shaper_available = False
+                self.inputShaperCalibrateButton.setEnabled(is_ready and shaper_available)
                     
         except Exception as e:
             self.logger.error(f"Error updating CalibrateScreen UI for Klipper state {state}: {e}")
