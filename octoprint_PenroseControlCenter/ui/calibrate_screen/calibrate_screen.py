@@ -65,9 +65,6 @@ class CalibrateScreen(QWidget):
         self.calibrationWizardButton.clicked.connect(lambda: self.show_calibrate_screen("bed_leveling"))
         self.inputShaperCalibrateButton.clicked.connect(self.inputShaperCalibrate)
 
-        # Temporarily disable input shaper button - TODO: Re-enable when ready
-        self.inputShaperCalibrateButton.setEnabled(False)
-        
         self.cameraToolOffsetCalibrateButton.clicked.connect(lambda: self.show_calibrate_screen("camera_tool_offset"))
         self.nozzleOffsetButton.clicked.connect(lambda: self.show_calibrate_screen("nozzle_offset"))
         self.toolOffsetZButton.clicked.connect(lambda: self.show_calibrate_screen("tool_offset", tab="Z"))

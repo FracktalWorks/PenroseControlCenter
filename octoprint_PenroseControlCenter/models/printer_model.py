@@ -115,6 +115,9 @@ class PrinterModel(QObject):
         prefs = state.get("preferences", {})
         self.pellet_sensor_t0_enabled = bool(prefs.get("pellet_sensor_t0_enabled", True))  # Default to enabled
         self.pellet_sensor_t1_enabled = bool(prefs.get("pellet_sensor_t1_enabled", True))  # Default to enabled
+        # Filament-mode sensor preferences (Penrose Hybrid filament head)
+        self.extruder_runout_enabled = bool(prefs.get("extruder_runout_enabled", True))
+        self.extruder_flow_enabled = bool(prefs.get("extruder_flow_enabled", True))
         self.print_compatibility_check_enabled = bool(prefs.get("print_compatibility_check_enabled", True))  # Default to enabled
         
         # Print restore preferences
@@ -157,6 +160,20 @@ class PrinterModel(QObject):
         self.pellet_sensor_t1_enabled = bool(enabled)
         if persist and prev != enabled:
             self._config_store.set_preference('pellet_sensor_t1_enabled', bool(enabled))
+
+    def set_extruder_runout_pref(self, enabled: bool, persist: bool = True):
+        """Set filament runout sensor preference (filament mode) and persist if requested."""
+        prev = self.extruder_runout_enabled
+        self.extruder_runout_enabled = bool(enabled)
+        if persist and prev != enabled:
+            self._config_store.set_preference('extruder_runout_enabled', bool(enabled))
+
+    def set_extruder_flow_pref(self, enabled: bool, persist: bool = True):
+        """Set filament flow/motion sensor preference (filament mode) and persist if requested."""
+        prev = self.extruder_flow_enabled
+        self.extruder_flow_enabled = bool(enabled)
+        if persist and prev != enabled:
+            self._config_store.set_preference('extruder_flow_enabled', bool(enabled))
 
     def set_print_compatibility_check_pref(self, enabled: bool, persist: bool = True):
         """Set print compatibility check preference and persist if requested."""

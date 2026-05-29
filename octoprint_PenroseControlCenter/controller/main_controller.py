@@ -26,7 +26,7 @@ from utils.helpers import run_async
 from utils import dialog
 from ui.loading_screen.loading_screen import LoadingScreen
 from config import ip, apiKey, CRITICAL_PRINTER_ERRORS, IGNORED_PRINTER_ERRORS
-from utils.printer_ui_config import is_dual_nozzle_printer
+from utils.printer_ui_config import is_dual_nozzle_printer, is_filament_extruder_mode, is_pellet_extruder_mode
 
 
 logger = get_logger(__name__)
@@ -664,6 +664,33 @@ class MainController(QtCore.QObject):
         except Exception as e:
             self.logger.error(f"Failed applying pellet sensor state: {e}")
 
+    def apply_filament_sensor_state(self):
+        """Enable/disable filament-mode sensors per preferences.
+
+        Filament head exposes:
+        - extruder_runout — mechanical runout switch (M2-STOP / PF3)
+        - extruder_flow   — pulse-counting motion sensor (M6-STOP / PC15)
+        """
+        if not self.octoprint_client:
+            return
+        try:
+            runout_enabled = getattr(self.printer_model, 'extruder_runout_enabled', True)
+            flow_enabled = getattr(self.printer_model, 'extruder_flow_enabled', True)
+            runout_state = 1 if runout_enabled else 0
+            flow_state = 1 if flow_enabled else 0
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE={runout_state}')
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE={flow_state}')
+            self.logger.info(f"Applied filament sensor state: runout={runout_state} flow={flow_state}")
+        except Exception as e:
+            self.logger.error(f"Failed applying filament sensor state: {e}")
+
+    def apply_extruder_sensors(self):
+        """Dispatcher: apply sensor preferences for the currently active extruder head."""
+        if is_filament_extruder_mode():
+            self.apply_filament_sensor_state()
+        else:
+            self.apply_pellet_sensor_state()
+
     def pelletSensorLowTriggered(self, tool):
         """Handle pellet level low event - this is informational only.
         
@@ -979,8 +1006,8 @@ class MainController(QtCore.QObject):
         self.logger.info("MainController.onStartupCompleted started")
         if self.octoprint_client:
             try:
-                # Apply pellet sensor preferences on startup
-                self.apply_pellet_sensor_state()
+                # Apply extruder sensor preferences on startup (pellet OR filament mode)
+                self.apply_extruder_sensors()
                 # Reload printer configuration from Klipper after connection is established
                 self.printer_model.reload_printer_configuration()
                 
@@ -1051,8 +1078,8 @@ class MainController(QtCore.QObject):
             elif not self.printer_model.print_compatibility_check_enabled:
                 self.logger.info("Print compatibility check is disabled, skipping validation")
             
-            # Apply pellet sensor state if print continues
-            self.apply_pellet_sensor_state()
+            # Apply extruder sensor state if print continues
+            self.apply_extruder_sensors()
             
             # Navigate to home screen when print starts
             self.logger.info("Navigating to home screen after print started")
@@ -1064,14 +1091,14 @@ class MainController(QtCore.QObject):
     def onPrintResumed(self, event):
         try:
             self.logger.info("MainController.onPrintResumed invoked")
-            self.apply_pellet_sensor_state()
+            self.apply_extruder_sensors()
         except Exception as e:
             self.logger.error(f"Error in onPrintResumed: {e}")
 
     def onPrintPaused(self, event):
         try:
             self.logger.info("MainController.onPrintPaused invoked")
-            if self.octoprint_client:
+            if self.octoprint_client and is_pellet_extruder_mode():
                 # Disable pellet sensors when print is paused (stops auto-refill)
                 self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
                 if is_dual_nozzle_printer():
@@ -1083,10 +1110,11 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintCancelled invoked")
             if self.octoprint_client:
-                # Disable pellet sensors immediately
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                if is_dual_nozzle_printer():
-                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                if is_pellet_extruder_mode():
+                    # Disable pellet sensors immediately
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+                    if is_dual_nozzle_printer():
+                        self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:
@@ -1096,10 +1124,11 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintCompleted invoked")
             if self.octoprint_client:
-                # Disable pellet sensors immediately
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                if is_dual_nozzle_printer():
-                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                if is_pellet_extruder_mode():
+                    # Disable pellet sensors immediately
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+                    if is_dual_nozzle_printer():
+                        self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:

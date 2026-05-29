@@ -83,7 +83,6 @@ DUAL_NOZZLE_ELEMENTS = {
     ],
     'control_screen': [
         'toolToggleTemperatureButton', 'toolToggleMotionButton',
-        'togglePelletSensorT1Button',
         'H1TempSpinBox', 'setH1TempButton', 'H140PreheatButton', 'H160PreheatButton'
     ],
     'filament_management_screen': [
@@ -139,9 +138,6 @@ PELLET_ONLY_ELEMENTS = {
         'H0TargetTemperature', 'H0ActualTemperature', 'H0TempBar',
     ],
     'control_screen': [
-        # Pellet runout/flow sensor toggles
-        'togglePelletSensorT0Button',
-        'togglePelletSensorT1Button',
         # H0 barrel heater controls – hide the container widget so the whole
         # row (label + spinbox + preheat buttons) collapses cleanly.
         'horizontalLayoutWidget_H0',
@@ -359,6 +355,51 @@ def apply_extruder_head_config_to_screen(widget, screen_name):
     pellet_mode = is_pellet_extruder_mode()
     _set_elements_visible(widget, pellet_only, pellet_mode)
     _set_elements_visible(widget, filament_only, not pellet_mode)
+    # Reconfigure mode-shared sensor toggles on the control screen
+    if screen_name == 'control_screen':
+        configure_sensor_toggles_for_mode(widget)
+
+
+def configure_sensor_toggles_for_mode(widget):
+    """Configure togglePelletSensorT0Button / togglePelletSensorT1Button per mode.
+
+    Pellet mode:
+      - T0 button (label: 'T0 Pellet Level Sensor') visible
+      - T1 button (label: 'T1 Pellet Level Sensor') visible only when dual nozzle
+    Filament mode:
+      - T0 button is repurposed as the filament RUNOUT sensor toggle
+      - T1 button is repurposed as the filament FLOW sensor toggle
+      - Both are always visible regardless of nozzle count
+    """
+    t0_btn = getattr(widget, 'togglePelletSensorT0Button', None) or widget.findChild(QWidget, 'togglePelletSensorT0Button')
+    t1_btn = getattr(widget, 'togglePelletSensorT1Button', None) or widget.findChild(QWidget, 'togglePelletSensorT1Button')
+    t0_label = widget.findChild(QWidget, 'feedRateLabelControlPage_3')
+    t1_label = widget.findChild(QWidget, 'feedRateLabelControlPage_2')
+
+    pellet_mode = is_pellet_extruder_mode()
+    dual = is_dual_nozzle_printer()
+
+    if pellet_mode:
+        if t0_btn:
+            t0_btn.setVisible(True)
+        if t0_label and hasattr(t0_label, 'setText'):
+            t0_label.setText('T0 Pellet Level Sensor')
+        if t1_btn:
+            t1_btn.setVisible(bool(dual))
+        if t1_label and hasattr(t1_label, 'setText'):
+            t1_label.setText('T1 Pellet Level Sensor')
+            t1_label.setVisible(bool(dual))
+    else:
+        # Filament mode: both toggles always visible, relabelled
+        if t0_btn:
+            t0_btn.setVisible(True)
+        if t0_label and hasattr(t0_label, 'setText'):
+            t0_label.setText('Filament Runout Sensor')
+        if t1_btn:
+            t1_btn.setVisible(True)
+        if t1_label and hasattr(t1_label, 'setText'):
+            t1_label.setText('Filament Flow Sensor')
+            t1_label.setVisible(True)
 
 
 def apply_nozzle_config_to_all_screens(main_window):

@@ -240,10 +240,15 @@ class ControlScreen(QWidget):
 
         # Reflect persistent pellet sensor preferences in toggle buttons
         try:
-            t0_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
-            self.togglePelletSensorT0Button.setChecked(t0_sensor_enabled)
-            t1_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t1_enabled)
-            self.togglePelletSensorT1Button.setChecked(t1_sensor_enabled)
+            from utils.printer_ui_config import is_filament_extruder_mode
+            if is_filament_extruder_mode():
+                t0_init = bool(self.main_window.printer_model.extruder_runout_enabled)
+                t1_init = bool(self.main_window.printer_model.extruder_flow_enabled)
+            else:
+                t0_init = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
+                t1_init = bool(self.main_window.printer_model.pellet_sensor_t1_enabled)
+            self.togglePelletSensorT0Button.setChecked(t0_init)
+            self.togglePelletSensorT1Button.setChecked(t1_init)
             # Initialize print compatibility check button
             compatibility_enabled = bool(self.main_window.printer_model.print_compatibility_check_enabled)
             self.toggleCheckPrintCompatibilityButton.setChecked(compatibility_enabled)
@@ -711,25 +716,41 @@ class ControlScreen(QWidget):
             dialog.WarningOk(self, f"Error updating ControlScreen UI for status {status}: {e}", overlay=True)
 
     def togglePelletSensorT0(self):
-        """Toggle T0 (Left) pellet level sensor persistent preference and apply live state."""
+        """Toggle T0 sensor button.
+
+        Pellet mode  → T0 pellet level sensor (pellet_sensor_left).
+        Filament mode → filament runout sensor (extruder_runout).
+        """
         logger.info("ControlScreen.togglePelletSensorT0 started")
         try:
+            from utils.printer_ui_config import is_filament_extruder_mode
             enabled = self.togglePelletSensorT0Button.isChecked()
-            # Update model preference (persists)
-            self.main_window.printer_model.set_pellet_sensor_t0_pref(enabled, persist=True)
-            # Apply immediate state to Klipper
-            self.main_window.controller.apply_pellet_sensor_state()
+            if is_filament_extruder_mode():
+                self.main_window.printer_model.set_extruder_runout_pref(enabled, persist=True)
+                self.main_window.controller.apply_filament_sensor_state()
+            else:
+                self.main_window.printer_model.set_pellet_sensor_t0_pref(enabled, persist=True)
+                self.main_window.controller.apply_pellet_sensor_state()
         except Exception as e:
             logger.error(f"Error in ControlScreen.togglePelletSensorT0: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT0: {e}", overlay=True)
 
     def togglePelletSensorT1(self):
-        """Toggle T1 (Right) pellet level sensor persistent preference and apply live state."""
+        """Toggle T1 sensor button.
+
+        Pellet mode  → T1 pellet level sensor (pellet_sensor_right, dual nozzle).
+        Filament mode → filament flow sensor (extruder_flow).
+        """
         logger.info("ControlScreen.togglePelletSensorT1 started")
         try:
+            from utils.printer_ui_config import is_filament_extruder_mode
             enabled = self.togglePelletSensorT1Button.isChecked()
-            self.main_window.printer_model.set_pellet_sensor_t1_pref(enabled, persist=True)
-            self.main_window.controller.apply_pellet_sensor_state()
+            if is_filament_extruder_mode():
+                self.main_window.printer_model.set_extruder_flow_pref(enabled, persist=True)
+                self.main_window.controller.apply_filament_sensor_state()
+            else:
+                self.main_window.printer_model.set_pellet_sensor_t1_pref(enabled, persist=True)
+                self.main_window.controller.apply_pellet_sensor_state()
         except Exception as e:
             logger.error(f"Error in ControlScreen.togglePelletSensorT1: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT1: {e}", overlay=True)
