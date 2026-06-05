@@ -71,7 +71,7 @@ class WizardName(QWidget):
 - Proper resource cleanup on cancel/completion
 
 ## File Structure
-Create both Python and UI files in: `octoprint_ControlCenter/ui/calibrate_screen/[wizard_name]/`
+Create both Python and UI files in: `octoprint_PenroseControlCenter/ui/calibrate_screen/[wizard_name]/`
 * `[wizard_name].py` - Python implementation
 * `[wizard_name].ui` - Qt Designer UI file
 

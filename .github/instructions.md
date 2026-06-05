@@ -313,20 +313,20 @@ def _init_ui_components(self):
 
 ## Integration Patterns
 ### Calibrate Screen Integration
-1. Import in `octoprint_ControlCenter/ui/calibrate_screen/calibrate_screen.py`
+1. Import in `octoprint_PenroseControlCenter/ui/calibrate_screen/calibrate_screen.py`
 2. Add to `_initialize_sub_screens()` method
 3. Connect button in `__init__` method
 4. Add navigation method
 
 ### Settings Screen Integration
-1. Import in `octoprint_ControlCenter/ui/settings_screen/settings_screen.py`
+1. Import in `octoprint_PenroseControlCenter/ui/settings_screen/settings_screen.py`
 2. Add UI button to `settings_screen.ui`
 3. Initialize in `_initialize_sub_screens()`
 4. Add navigation method
 5. Connect button signal
 
 ### Filament Management Integration
-1. Import in `octoprint_ControlCenter/ui/filament_management_screen/filamentManagementScreen.py`
+1. Import in `octoprint_PenroseControlCenter/ui/filament_management_screen/filamentManagementScreen.py`
 2. Add to `_initialize_sub_screens()` method
 3. Setup wizard with appropriate parameters
 

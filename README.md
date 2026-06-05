@@ -13,7 +13,7 @@ This project is a PyQt application designed for controlling a 3D printer via a t
 
 ```
 pyqt-3d-printer-app
-├── octoprint_ControlCenter
+├── octoprint_PenroseControlCenter
 │   ├── main.py                # Entry point of the application
 │   ├── ui
 │   │   ├── main_window        # Main window directory
@@ -66,7 +66,7 @@ pyqt-3d-printer-app
 
 3. Run the application:
    ```
-   python octoprint_ControlCenter/main.py
+   python octoprint_PenroseControlCenter/main.py
    ```
 
 ## Usage
@@ -146,7 +146,7 @@ The application supports dynamically loading new settings widgets. To add a new 
 4. Ensure the class name in the `.py` file matches the widget name in title case with underscores removed.
 5. The new widget will be dynamically loaded and integrated into the main settings screen.
 
-For more details, refer to the [Settings Screen README](octoprint_ControlCenter/ui/settings_screen/README.md).
+For more details, refer to the [Settings Screen README](octoprint_PenroseControlCenter/ui/settings_screen/README.md).
 
 ## Contributing
 

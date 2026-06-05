@@ -20,7 +20,7 @@ The settings widget should include:
 * Integration with settings_screen.py
 
 ## File Structure
-Create both Python and UI files in: `octoprint_ControlCenter/ui/settings_screen/[widget_name]/`
+Create both Python and UI files in: `octoprint_PenroseControlCenter/ui/settings_screen/[widget_name]/`
 * `[widget_name].py` - Python implementation
 * `[widget_name].ui` - Qt Designer UI file
 

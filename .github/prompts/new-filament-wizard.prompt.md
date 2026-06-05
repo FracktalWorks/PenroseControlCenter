@@ -21,7 +21,7 @@ The filament wizard should include:
 * Inactivity timer for safety (5 minutes)
 
 ## File Structure
-Create both Python and UI files in: `octoprint_ControlCenter/ui/filament_management_screen/[wizard_name]/`
+Create both Python and UI files in: `octoprint_PenroseControlCenter/ui/filament_management_screen/[wizard_name]/`
 * `[wizard_name].py` - Python implementation
 * `[wizard_name].ui` - Qt Designer UI file
 

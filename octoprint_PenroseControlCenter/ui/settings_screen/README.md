@@ -33,7 +33,7 @@ class ExampleWidget(QWidget):
     def __init__(self, parent, settings_screen):
         super(ExampleWidget, self).__init__(parent)
         self.mainSettingsWidget = settings_screen  # Reference to the main settings widget
-        uic.loadUi('octoprint_ControlCenter/ui/settings_screen/example_widget/example_widget.ui', self)
+        uic.loadUi('octoprint_PenroseControlCenter/ui/settings_screen/example_widget/example_widget.ui', self)
 
         # Example of connecting a button to a function
         self.exampleButton = self.findChild(QPushButton, 'exampleButton')

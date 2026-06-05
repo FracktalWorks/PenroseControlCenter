@@ -275,7 +275,7 @@ if not is_dual_nozzle_printer():
 ## File Structure
 
 ```
-octoprint_ControlCenter/
+octoprint_PenroseControlCenter/
 ├── config.py                          # Dynamic configuration data (IS_DUAL_NOZZLE loaded from Klipper)
 ├── utils/
 │   ├── printer_ui_config.py          # UI configuration module with is_dual_nozzle_printer()
@@ -371,7 +371,7 @@ Run this test to verify your configuration works:
 
 ```bash
 # Test imports
-cd octoprint_ControlCenter
+cd octoprint_PenroseControlCenter
 python -c "from utils.printer_ui_config import *; print('✅ Configuration working')"
 
 # Test configuration loading

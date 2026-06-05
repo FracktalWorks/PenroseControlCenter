@@ -492,7 +492,7 @@ class NetworkSettings(QWidget):
                 
                 # Determine config directory path relative to this file
                 current_dir = os.path.dirname(os.path.abspath(__file__))
-                # Navigate up to octoprint_ControlCenter directory, then to config
+                # Navigate up to octoprint_PenroseControlCenter directory, then to config
                 config_dir = os.path.join(current_dir, "..", "..", "..", "config")
                 config_dir = os.path.abspath(config_dir)
                 

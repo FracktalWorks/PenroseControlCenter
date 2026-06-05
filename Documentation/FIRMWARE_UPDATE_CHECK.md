@@ -24,7 +24,7 @@ The version is specified as `# Version: X` where X is an integer version number.
 ### Update Check Process
 
 1. **Startup Check**: During application startup, after Klipper configuration validation
-2. **Version Comparison**: Compares the version in `/home/pi/printer.cfg` with the template in `octoprint_ControlCenter/firmware/printer.cfg`
+2. **Version Comparison**: Compares the version in `/home/pi/printer.cfg` with the template in `octoprint_PenroseControlCenter/firmware/printer.cfg`
 3. **User Prompt**: If a newer version is detected, shows a dialog asking if the user wants to update
 4. **Update Process**: If accepted, performs the firmware update while preserving user data
 
@@ -55,8 +55,8 @@ This ensures users get the latest firmware features without losing their hardwar
 ### File Locations
 
 - **Active Configuration**: `/home/pi/printer.cfg` - The currently active printer configuration
-- **Firmware Template**: `octoprint_ControlCenter/firmware/printer.cfg` - The latest firmware template
-- **Printer Configs**: `octoprint_ControlCenter/firmware/PRINTER_*.cfg` - Individual printer configuration files
+- **Firmware Template**: `octoprint_PenroseControlCenter/firmware/printer.cfg` - The latest firmware template
+- **Printer Configs**: `octoprint_PenroseControlCenter/firmware/PRINTER_*.cfg` - Individual printer configuration files
 
 ## User Interface
 
@@ -145,7 +145,7 @@ def toggleFirmwareUpdate(self):
 
 To release a new firmware version:
 
-1. **Update Version Number**: Increment the version in `octoprint_ControlCenter/firmware/printer.cfg`
+1. **Update Version Number**: Increment the version in `octoprint_PenroseControlCenter/firmware/printer.cfg`
    ```cfg
    # Version: 3  # Increment from previous version
    ```
@@ -176,7 +176,7 @@ The feature is designed to be backward compatible:
    - Ensure Firmware Update button is checked (green)
 
 2. **Test Update Available**:
-   - Modify `octoprint_ControlCenter/firmware/printer.cfg` to have a higher version number
+   - Modify `octoprint_PenroseControlCenter/firmware/printer.cfg` to have a higher version number
    - Restart the application
    - Verify update dialog appears
 
