@@ -57,6 +57,11 @@ class OctoPrintWebSocket(QThread):
     
     # Pellet sensor signals
     pellet_outage_signal = pyqtSignal(str)  # Emits tool ("0" or "1") when pellet supply exhausted
+
+    # Hybrid IDEX extruder mode signal ("pellet" or "filament"), parsed
+    # from the "EXTRUDER_MODE:<MODE>" RESPOND prefix emitted by
+    # SET_EXTRUDER_MODE / QUERY_EXTRUDER_MODE in BASE_PENROSE_HYBRID.cfg
+    extruder_mode_signal = pyqtSignal(str)
     
     # Position update signals
     current_position_updated_signal = pyqtSignal(dict)  # {'x': float, 'y': float, 'z': float}
@@ -522,6 +527,20 @@ class OctoPrintWebSocket(QThread):
                                         self.filament_runout_sensor_triggered_signal.emit(tool)
                                     except Exception as e:
                                         self.logger.error(f"Error emitting filament_runout_sensor_triggered_signal: {e}")
+
+                                # Hybrid IDEX extruder mode - "EXTRUDER_MODE:PELLET" or
+                                # "EXTRUDER_MODE:FILAMENT" (may carry a trailing note like
+                                # "(applies at print start)")
+                                elif 'EXTRUDER_MODE:' in item:
+                                    try:
+                                        mode = item.split('EXTRUDER_MODE:', 1)[1].split(' ', 1)[0].strip().lower()
+                                        if mode in ('pellet', 'filament'):
+                                            self.logger.info(f"Extruder mode reported: {mode}")
+                                            self.extruder_mode_signal.emit(mode)
+                                        else:
+                                            self.logger.warning(f"Unrecognized extruder mode in message: {item}")
+                                    except Exception as e:
+                                        self.logger.error(f"Error parsing extruder mode message: {e}")
 
                                 # Pellet outage detection - "Pellet Outage T0" or "Pellet Outage T1"
                                 elif 'Pellet Outage T' in item:

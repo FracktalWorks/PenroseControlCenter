@@ -47,9 +47,13 @@ class PrinterModel(QObject):
     
     # Position tracking signals
     current_position_updated = pyqtSignal(dict)  # {'x': float, 'y': float, 'z': float}
-    
+
     # Probe accuracy results for calibration wizards
     probe_accuracy_result_received = pyqtSignal(str, dict)  # (tool_name, probe_data)
+
+    # Hybrid IDEX extruder mode ("pellet" or "filament") - which tool a
+    # print job uses when the sliced gcode has no explicit T0/T1 commands
+    extruder_mode_changed = pyqtSignal(str)
 
     def __init__(self):
         super(PrinterModel, self).__init__()
@@ -88,6 +92,11 @@ class PrinterModel(QObject):
         self.machineBuildSize = config.machineBuildSize
         self.IS_DUAL_NOZZLE = config.IS_DUAL_NOZZLE
         self.IS_HYBRID = config.IS_HYBRID
+        # Hybrid IDEX extruder mode - source of truth lives in Klipper's
+        # variables.cfg (extruder_mode); this cache is refreshed from the
+        # EXTRUDER_MODE: websocket messages. 'pellet' matches the macro
+        # default in BASE_PENROSE_HYBRID.cfg.
+        self.extruder_mode = "pellet"
         # Klipper state cache
         self.klipper_state = "unknown"
         # Tool state persistence
@@ -201,6 +210,22 @@ class PrinterModel(QObject):
         self.extruder_runout_enabled = bool(enabled)
         if persist and prev != enabled:
             self._config_store.set_preference('extruder_runout_enabled', bool(enabled))
+
+    def update_extruder_mode(self, mode: str):
+        """Cache the Hybrid IDEX extruder mode reported by Klipper.
+
+        Klipper's variables.cfg is the source of truth (persisted there by
+        SET_EXTRUDER_MODE); this just mirrors it for the UI. Emits
+        extruder_mode_changed on change.
+        """
+        mode = str(mode).lower()
+        if mode not in ("pellet", "filament"):
+            self.logger.warning(f"Ignoring invalid extruder mode: {mode}")
+            return
+        if mode != self.extruder_mode:
+            self.extruder_mode = mode
+            self.logger.info(f"Extruder mode updated: {mode}")
+            self.extruder_mode_changed.emit(mode)
 
     def set_print_compatibility_check_pref(self, enabled: bool, persist: bool = True):
         """Set print compatibility check preference and persist if requested."""

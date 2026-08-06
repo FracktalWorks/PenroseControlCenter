@@ -401,9 +401,26 @@ class PrinterConfigManager:
             # Update appearance name with current printer
             if 'appearance' not in config_data:
                 config_data['appearance'] = {}
-                
+
             config_data['appearance']['name'] = self.get_printer_display_name(printer_name)
-            
+
+            # Hybrid IDEX (pellet T0 + filament T1): extend the pellet-only
+            # temperature presets with filament presets so the OctoPrint web
+            # UI offers sensible one-tap temps for the T1 filament head too.
+            printer_config = self.get_printer_config_from_variables(printer_name)
+            if bool(printer_config.get('variables', {}).get('is_hybrid', 0)):
+                filament_presets = [
+                    {'name': 'PLA Filament', 'extruder': 210, 'bed': 60, 'chamber': None},
+                    {'name': 'PETG Filament', 'extruder': 240, 'bed': 80, 'chamber': None},
+                    {'name': 'ABS Filament', 'extruder': 245, 'bed': 100, 'chamber': None},
+                ]
+                temp_section = config_data.setdefault('temperature', {})
+                profiles = temp_section.setdefault('profiles', [])
+                existing_names = {p.get('name') for p in profiles if isinstance(p, dict)}
+                for preset in filament_presets:
+                    if preset['name'] not in existing_names:
+                        profiles.append(preset)
+
             # Ensure destination directory exists
             os.makedirs(os.path.dirname(dest_config), exist_ok=True)
             
@@ -517,14 +534,29 @@ class PrinterConfigManager:
                 # Check if printer is dual nozzle to include T1 cooldown commands
                 printer_config = self.get_printer_config_from_variables(printer_name)
                 is_dual = printer_config.get('is_dual', True)
-                
+                is_hybrid = bool(printer_config.get('variables', {}).get('is_hybrid', 0))
+
                 if is_dual:
                     after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM104 T1 S0  ; Cool down tool1 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
                 else:
                     after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
-                
+
+                if is_hybrid:
+                    # Hybrid IDEX: activate the saved extruder mode's tool
+                    # (pellet=T0 / filament=T1) before the job gcode runs, so
+                    # single-extruder slicer profiles print with the tool the
+                    # operator selected in the UI. PELLET_PREPRINT_CHECK
+                    # self-gates on the active tool (no-op in filament mode).
+                    before_print_started = (
+                        '_APPLY_EXTRUDER_MODE  ; Activate pellet/filament mode tool\n'
+                        'PELLET_PREPRINT_CHECK  ; Refill T0 hopper if empty (skipped in filament mode)\n'
+                        'M514 S1  ; Open door/chamber on print start'
+                    )
+                else:
+                    before_print_started = 'M514 S1  ; Open door/chamber on print start'
+
                 default_scripts = {
-                    'beforePrintStarted': 'M514 S1  ; Open door/chamber on print start',
+                    'beforePrintStarted': before_print_started,
                     'beforePrintResumed': 'RESUME\nM514 S1  ; Resume print and open door/chamber',
                     'afterPrintPaused': 'PAUSE\nM514 S0  ; Pause print and close door/chamber',
                     'afterPrintDone': after_print_cooldown,

@@ -195,9 +195,43 @@ heater and sensor), `PF6` and `PF8` (T1 pellet part fans).
 | `M702` / `UNLOAD_FILAMENT` | Heat T1, retract, then turn the heater off. |
 | `PELLET_PREPRINT_CHECK` | No-ops when T1 is the active tool. |
 | `MIX_HOPPER` | No-ops when T1 is the active tool. |
+| `SET_EXTRUDER_MODE MODE=PELLET/FILAMENT` | Persist the printing mode (variables.cfg). Applies immediately when idle + homed, otherwise at the next print start. |
+| `_APPLY_EXTRUDER_MODE` | Activate the saved mode's tool (homes first if needed). Run automatically by OctoPrint's `beforePrintStarted` script. |
+| `QUERY_EXTRUDER_MODE` | Report the saved mode and the active tool. |
+| `G29` | Always probes with **T0** — the bed probe rides the pellet carriage; the TD-01 filament head has no probe. Switches to T0 first if T1 is active. |
 
 Pellet auto-refill additionally requires T0 to be the active tool, so a
 filament-only print can never trip a pellet outage pause or fire the line vac.
+
+## Extruder mode (Pellet / Filament)
+
+Both extruders are always present, so "mode" is a runtime state, not a config
+swap: it decides **which tool a print uses when the sliced gcode contains no
+explicit `T0`/`T1` commands** — the normal case, since both pellet and filament
+jobs are sliced with single-extruder profiles.
+
+- **Where**: Settings → Printer Setup → "Extruder Mode" dropdown (hybrid SKU
+  only). Switching asks for confirmation, then sends `SET_EXTRUDER_MODE`.
+  No firmware files are copied and no restart is needed.
+- **Persistence**: `extruder_mode` in Klipper's `variables.cfg` — survives
+  restarts and firmware config updates. Defaults to `pellet` when unset.
+- **Application**: OctoPrint's `beforePrintStarted` script runs
+  `_APPLY_EXTRUDER_MODE` → `PELLET_PREPRINT_CHECK` → `M514 S1`. The pellet
+  check self-gates on the active tool, so it no-ops in filament mode.
+- **Homing interaction**: `[homing_override]` forces T0 during every home
+  (probe safety and legacy IDEX behaviour), then — after a **full** home only —
+  re-activates T1 when the saved mode is `filament`. This is what keeps a job
+  whose own start gcode calls `G28` printing on the filament head. The restore
+  is motionless (T0 is at its −85 park, so autopark is skipped). Partial homes
+  (`G28 X`) keep the legacy end-on-T0 behaviour.
+- **Overrides**: explicit `T0`/`T1` in sliced gcode still wins — the mode only
+  sets the starting tool.
+
+**Slicer contract for mode-based printing**: use a single-extruder profile with
+start gcode that homes (`G28`) and does *not* emit `M605` or `T0`/`T1`.
+(`M605 S0/S1` runs `FULL_CONTROL`, which deliberately ends on T0 and would
+defeat filament mode.) Dual-extruder profiles with explicit tool commands also
+work — they simply override the mode.
 
 **Input shaping:** no accelerometer is fitted, so `SHAPER_CALIBRATE` cannot be
 run and the UI button stays disabled. The `[input_shaper]` section is present
@@ -236,6 +270,11 @@ which the websocket client parses into a dialog.
   filament load/unload wizard.
 - **T1's status label** shows its filament bay state (Loaded/Empty), not a
   hopper level; pellet sensor polling skips it.
+- **Extruder Mode dropdown** in Printer Setup (see "Extruder mode" above). The
+  selection mirrors Klipper's `variables.cfg` via the `EXTRUDER_MODE:` websocket
+  messages, and is re-queried every time the screen opens.
+- **OctoPrint web UI temperature presets** — the hybrid SKU appends PLA/PETG/ABS
+  *Filament* presets to the pellet presets in `config.yaml`.
 - The plugin's software updater tracks the `Hybrid-IDEX-Penrose-600` branch by
   commit, not by release tag, so a release on the default branch cannot
   overwrite this variant.

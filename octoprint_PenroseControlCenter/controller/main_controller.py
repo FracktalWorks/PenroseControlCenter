@@ -283,6 +283,8 @@ class MainController(QtCore.QObject):
         # Pellet sensor signals (Penrose pellet extruder uses pellet level sensors, not filament sensors)
         self.octoprint_websocket.filament_runout_sensor_triggered_signal.connect(self.pelletSensorLowTriggered)
         self.octoprint_websocket.pellet_outage_signal.connect(self.onPelletOutage)
+        # Hybrid IDEX extruder mode (pellet/filament) reported by Klipper
+        self.octoprint_websocket.extruder_mode_signal.connect(self.printer_model.update_extruder_mode)
         # Note: filament_jam_sensor_triggered_signal is unused - neither the
         # pellet heads nor the Hybrid IDEX filament head has a flow sensor
         self.printer_model.pellet_sensor_state.connect(self.onPelletSensorState)
@@ -1024,6 +1026,15 @@ class MainController(QtCore.QObject):
                 self.apply_extruder_sensors()
                 # Reload printer configuration from Klipper after connection is established
                 self.printer_model.reload_printer_configuration()
+
+                # Hybrid IDEX: ask Klipper for the persisted extruder mode so
+                # the model cache reflects variables.cfg (the response comes
+                # back through the websocket EXTRUDER_MODE: parser)
+                if is_hybrid_printer():
+                    try:
+                        self.octoprint_client.gcode(command='QUERY_EXTRUDER_MODE')
+                    except Exception as e:
+                        self.logger.warning(f"Failed to query extruder mode: {e}")
                 
                 status_response = self.octoprint_client.gcode(command='status')
                 if status_response:
