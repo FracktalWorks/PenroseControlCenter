@@ -144,6 +144,7 @@ The runout only pauses when T1 is the printing tool, so an empty filament spool
 never interrupts a pellet print on T0:
 
 ```
+pause_on_runout: False
 runout_gcode:
     {% if printer.toolhead.homed_axes == 'xyz' and printer.toolhead.extruder == 'extruder1' %}
         RESPOND TYPE=echo MSG="Filament Runout T1"
@@ -151,12 +152,25 @@ runout_gcode:
     {% endif %}
 ```
 
+`pause_on_runout` must stay **False**: when it is True, Klipper's
+`filament_switch_sensor` module pauses the print *before* rendering
+`runout_gcode`, so the tool guard above would be powerless and a dry T1 spool
+would park a running T0 pellet print. With False, the pause happens only when
+the template explicitly issues `PAUSE` — and Klipper's `PAUSE` command sends
+the same `action:paused` notification to OctoPrint that the built-in path
+would, so nothing is lost. This matches the pattern used by every pellet
+sensor in `PELLET_RELAY_CONTROL_*.cfg`.
+
 ### Side feed motor sync
 
-`[extruder_stepper extruder_side1]` ships with a blank `extruder:` and is
-synced to `extruder1` at runtime by the `SYNC_E1_EXTRUDER` delayed_gcode. The
-sync is repeated in `FULL_CONTROL` and `homing_override` so a prior session
-cannot leave the two motors detached.
+`[extruder_stepper extruder_side1]` binds `extruder: extruder1` in the config,
+so Klipper syncs the side feeder to the CAN drive motor at connect time —
+the two are in lock-step from the moment Klipper starts. (Per the Klipper
+config reference, `extruder:` is a required key on `[extruder_stepper]`; an
+empty value means "not synchronized" and would leave the feeder idle until a
+macro syncs it.) The `SYNC_E1_EXTRUDER` delayed_gcode, `FULL_CONTROL`, and
+`homing_override` all re-assert the sync so a prior session's macros cannot
+leave the two motors detached.
 
 ### Pins freed relative to Penrose 600 Dual
 
