@@ -196,7 +196,8 @@ heater and sensor), `PF6` and `PF8` (T1 pellet part fans).
 | `PELLET_PREPRINT_CHECK` | No-ops when T1 is the active tool. |
 | `MIX_HOPPER` | No-ops when T1 is the active tool. |
 | `SET_EXTRUDER_MODE MODE=PELLET/FILAMENT` | Persist the printing mode (variables.cfg). Applies immediately when idle + homed, otherwise at the next print start. |
-| `_APPLY_EXTRUDER_MODE` | Activate the saved mode's tool (homes first if needed). Run automatically by OctoPrint's `beforePrintStarted` script. |
+| `_APPLY_EXTRUDER_MODE` | Activate the saved mode's tool (homes first if needed) and apply mode motion limits. Run automatically by OctoPrint's `beforePrintStarted` script. |
+| `ASSERT_EXTRUDER_MODE MODE=PELLET/FILAMENT` | Slicer-profile guard — **cancels the print** with an error if the file's declared mode does not match the machine's mode. |
 | `QUERY_EXTRUDER_MODE` | Report the saved mode and the active tool. |
 | `G29` | Always probes with **T0** — the bed probe rides the pellet carriage; the TD-01 filament head has no probe. Switches to T0 first if T1 is active. |
 
@@ -226,12 +227,34 @@ jobs are sliced with single-extruder profiles.
   (`G28 X`) keep the legacy end-on-T0 behaviour.
 - **Overrides**: explicit `T0`/`T1` in sliced gcode still wins — the mode only
   sets the starting tool.
+- **Motion limits**: applying a mode also applies its motion tuning via
+  `_EXTRUDER_MODE_LIMITS` — pellet keeps the gentler corners from the
+  `[printer]` section (`SQUARE_CORNER_VELOCITY=4`) for melt-pressure
+  stability; filament runs standard limits (`SQUARE_CORNER_VELOCITY=5`).
+- **UI presentation**: in either mode the touchscreen presents the machine as
+  a single-extruder printer — the Home screen shows only the mode's tool
+  (plus the H0 barrel in pellet mode) and re-skins **live** when the mode
+  changes; no firmware restart is needed. The Control and Filament screens
+  deliberately keep both tools visible so the operator can prep the inactive
+  head (preheat, load filament) before switching modes on the fly. A mode
+  switched mid-print does not re-skin until it actually engages at the next
+  job.
 
-**Slicer contract for mode-based printing**: use a single-extruder profile with
-start gcode that homes (`G28`) and does *not* emit `M605` or `T0`/`T1`.
-(`M605 S0/S1` runs `FULL_CONTROL`, which deliberately ends on T0 and would
-defeat filament mode.) Dual-extruder profiles with explicit tool commands also
-work — they simply override the mode.
+**Slicer contract for mode-based printing**: use a single-extruder profile per
+mode with start gcode that:
+
+1. Declares the mode — `ASSERT_EXTRUDER_MODE MODE=FILAMENT` (or `PELLET`) as
+   the **first line**. If the machine is in the other mode, the print cancels
+   immediately with a clear error instead of printing with the wrong head.
+2. Homes with `G28` (the mode's tool is restored after the home).
+3. Sets temperatures with bare `M104`/`M109 S…` (targets the active = mode
+   tool). Pellet profiles keep their `M104 H0 S…` barrel line and
+   `MIX_HOPPER` layer-change line.
+4. Does **not** emit `M605` or `T0`/`T1`. (`M605 S0/S1` runs `FULL_CONTROL`,
+   which deliberately ends on T0 and would defeat filament mode.)
+
+Dual-extruder profiles with explicit tool commands also work — they simply
+override the mode (omit the `ASSERT_EXTRUDER_MODE` line in that case).
 
 **Input shaping:** no accelerometer is fitted, so `SHAPER_CALIBRATE` cannot be
 run and the UI button stays disabled. The `[input_shaper]` section is present
@@ -273,6 +296,9 @@ which the websocket client parses into a dialog.
 - **Extruder Mode dropdown** in Printer Setup (see "Extruder mode" above). The
   selection mirrors Klipper's `variables.cfg` via the `EXTRUDER_MODE:` websocket
   messages, and is re-queried every time the screen opens.
+- **Mode-skinned Home screen** — only the active mode's tool rows are shown
+  (`MODE_HIDDEN_ELEMENTS` in `printer_ui_config.py`), re-applied live on
+  `extruder_mode_changed`.
 - **OctoPrint web UI temperature presets** — the hybrid SKU appends PLA/PETG/ABS
   *Filament* presets to the pellet presets in `config.yaml`.
 - The plugin's software updater tracks the `Hybrid-IDEX-Penrose-600` branch by

@@ -224,6 +224,9 @@ class PrinterModel(QObject):
             return
         if mode != self.extruder_mode:
             self.extruder_mode = mode
+            # Mirror into the config module so the UI-visibility helpers
+            # (printer_ui_config) can read it dynamically like IS_HYBRID
+            config.EXTRUDER_MODE = mode
             self.logger.info(f"Extruder mode updated: {mode}")
             self.extruder_mode_changed.emit(mode)
 

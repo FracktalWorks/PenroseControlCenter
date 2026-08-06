@@ -163,22 +163,42 @@ Also measure PD15 stays LOW (right solenoid never energises).
   job's start gcode keeps that tool (full homes re-activate T1 in filament
   mode after the mandatory T0 homing state).
 
+The touchscreen presents the machine as a **single-extruder printer in the
+active mode**: the Home screen shows only the mode's tool (plus H0 in pellet
+mode) and re-skins live on mode change — no restart needed. Control and
+Filament screens keep both tools so the inactive head can be prepped
+(preheated, loaded) ahead of an on-the-fly mode switch.
+
 **Slicer contract** (single-extruder profiles, one per mode):
 
-- Start gcode: home with `G28`; set temperatures with `M104`/`M109 S…`
-  (no `T` needed — bare `S` targets the active = mode tool). Pellet profiles
-  keep their `M104 H0 S…` barrel line and `MIX_HOPPER` layer-change line.
+- **First start-gcode line**: `ASSERT_EXTRUDER_MODE MODE=PELLET` in the pellet
+  profile, `ASSERT_EXTRUDER_MODE MODE=FILAMENT` in the filament profile. This
+  is the protection that a sliced file can never print with the wrong head:
+  on a mismatch the print cancels immediately with an on-screen error telling
+  the operator to switch the mode and reprint.
+- Then home with `G28`; set temperatures with `M104`/`M109 S…` (no `T`
+  needed — bare `S` targets the active = mode tool). Pellet profiles keep
+  their `M104 H0 S…` barrel line and `MIX_HOPPER` layer-change line.
 - Do **not** emit `M605` or `T0`/`T1` in mode-based profiles — `M605` resets
   to T0 and would defeat filament mode. (Explicit `T0`/`T1` is allowed when
-  you *intend* to pick the tool from the slicer instead of the UI mode.)
+  you *intend* to pick the tool from the slicer instead of the UI mode; omit
+  the `ASSERT_EXTRUDER_MODE` line in such profiles.)
 - No wipe tower / ooze shield — only one tool prints per job.
+- Motion tuning per mode is applied by the firmware
+  (`_EXTRUDER_MODE_LIMITS`): pellet keeps gentle corners (SCV 4), filament
+  runs standard (SCV 5) — no slicer-side changes needed.
 
 ## 9. Workflow validation — Pellet mode
 
 Set mode = **Pellet Extruder (T0)**, then verify:
 
-- [ ] Print a small pellet job (single-extruder pellet profile). It prints
-      with T0; T1 stays parked right the whole time.
+- [ ] Home screen shows only T0 + H0 + bed rows (T1 rows hidden).
+- [ ] Start a **filament-profile** file (with `ASSERT_EXTRUDER_MODE
+      MODE=FILAMENT`) → print cancels immediately with the mode-mismatch
+      error. This is the wrong-file protection working.
+- [ ] Print a small pellet job (single-extruder pellet profile with
+      `ASSERT_EXTRUDER_MODE MODE=PELLET`). It prints with T0; T1 stays
+      parked right the whole time.
 - [ ] `beforePrintStarted` ran the hopper check: console shows
       "Pre-print pellet check…" and refills if the hopper is empty.
 - [ ] Auto-refill mid-print: empty the hopper sensor → vac pulses (2s/0.5s)
@@ -198,6 +218,9 @@ Set mode = **Filament Extruder (T1)**, then verify:
 
 - [ ] Mode switch while idle+homed physically swaps carriages (T0 parks
       left, T1 comes in). `QUERY_EXTRUDER_MODE` → `EXTRUDER_MODE:FILAMENT`.
+- [ ] Home screen re-skins **live** (no restart): T0 and H0 rows disappear,
+      T1 rows appear.
+- [ ] Start a **pellet-profile** file → cancels with the mode-mismatch error.
 - [ ] Load filament: Filament screen → T1 bay → wizard (heats, feeds the
       2500 mm PTFE path in 150 mm steps, purge loop). Runout sensor is
       suspended during the wizard and restored after.
@@ -218,7 +241,8 @@ Set mode = **Filament Extruder (T1)**, then verify:
 ## 11. Mode-switch edge cases (worth one pass)
 
 - [ ] Switch mode while a print is running → UI confirms, tools do **not**
-      swap mid-print; the new mode applies from the next job.
+      swap mid-print, and the Home screen keeps the running mode's skin;
+      the new mode (and skin) engage at the next job.
 - [ ] Switch mode while unhomed → no motion; next print start homes and
       lands on the requested tool.
 - [ ] Reboot after setting filament mode → `QUERY_EXTRUDER_MODE` still

@@ -101,6 +101,38 @@ HYBRID_HIDDEN_ELEMENTS = {
     ]
 }
 
+# Hybrid IDEX extruder-mode skin: in either mode the machine presents as a
+# single-extruder printer, so the Home screen shows only the mode's tool.
+# Keyed by mode -> screen -> elements that belong to the OTHER tool and get
+# hidden while that mode is active (and re-shown when the mode flips).
+# Only the Home screen (status display) is skinned - the Control and
+# Filament screens keep both tools so the operator can prep the inactive
+# head (preheat, load filament) before switching modes on the fly.
+# Home screen layout order: tool0 -> toolSeparationLine -> H0 ->
+# toolSeparationLine_2 -> tool1 -> H1 (always hidden on hybrid) -> bed.
+MODE_HIDDEN_ELEMENTS = {
+    'pellet': {
+        'home_screen': [
+            # T1 filament rows hidden while in pellet mode, plus the
+            # separator that led into them
+            'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
+            'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature',
+            'tool1TextLabel', 'toolSeparationLine_2'
+        ]
+    },
+    'filament': {
+        'home_screen': [
+            # T0 pellet rows (nozzle + H0 barrel) and both separators
+            # hidden while in filament mode - tool1 stands alone above bed
+            'tool0Label', 'tool0LoadedNozzle', 'tool0LoadedFilament',
+            'tool0TargetTemperature', 'tool0TempBar', 'tool0ActualTemperature',
+            'tool0TextLabel', 'toolSeparationLine', 'toolSeparationLine_2',
+            'H0TargetTemperature', 'H0ActualTemperature', 'H0TempBar',
+            'H0Label', 'H0TextLabel'
+        ]
+    }
+}
+
 # UI elements that should only be shown for printers with heater ring (Volterra ALF)
 # Note: ALF ring heater shows power % only (via ALFLabel), not temperature
 # Only include QWidget-based elements (not layouts, which don't have show/hide methods)
@@ -203,6 +235,70 @@ def hide_hybrid_elements(widget, element_names):
                 logger.debug(f"Hidden hybrid IDEX element: {element_name}")
             except Exception as e:
                 logger.error(f"Error hiding element {element_name}: {e}")
+
+def get_extruder_mode():
+    """Return the Hybrid IDEX runtime extruder mode ('pellet'/'filament')."""
+    # Mirrored from Klipper's variables.cfg by PrinterModel.update_extruder_mode()
+    return getattr(config, 'EXTRUDER_MODE', 'pellet')
+
+def apply_extruder_mode_visibility(widget, screen_name):
+    """Skin a screen for the active Hybrid IDEX extruder mode.
+
+    In either mode the machine presents as a single-extruder printer:
+    the other tool's rows are hidden, and the rows belonging to the
+    active mode's tool are re-shown (so flipping the mode back and
+    forth works without a restart). No-op on non-hybrid printers.
+
+    Args:
+        widget: The screen widget
+        screen_name: Name of the screen for element lookup
+    """
+    if not is_hybrid_printer():
+        return
+    mode = get_extruder_mode()
+    other = 'filament' if mode == 'pellet' else 'pellet'
+
+    def _resolve(name):
+        element = getattr(widget, name, None)
+        if element is None:
+            element = widget.findChild(QWidget, name)
+        return element
+
+    # Show the rows the other mode had hidden first, then hide this
+    # mode's list - elements in both lists (e.g. the separator line)
+    # end up hidden, which is what a single-tool presentation wants.
+    for name in MODE_HIDDEN_ELEMENTS.get(other, {}).get(screen_name, []):
+        element = _resolve(name)
+        if element:
+            try:
+                element.show()
+            except Exception as e:
+                logger.error(f"Error showing element {name}: {e}")
+    for name in MODE_HIDDEN_ELEMENTS.get(mode, {}).get(screen_name, []):
+        element = _resolve(name)
+        if element:
+            try:
+                element.hide()
+            except Exception as e:
+                logger.error(f"Error hiding element {name}: {e}")
+    logger.debug(f"Applied {mode} mode visibility to {screen_name}")
+
+def apply_extruder_mode_to_all_screens(main_window):
+    """Re-skin every mode-aware screen for the active extruder mode.
+
+    Called at startup and whenever PrinterModel.extruder_mode_changed
+    fires, so the touchscreen follows mode switches live - no firmware
+    restart needed.
+    """
+    if not is_hybrid_printer():
+        return
+    screen_names = set()
+    for per_mode in MODE_HIDDEN_ELEMENTS.values():
+        screen_names.update(per_mode.keys())
+    for screen_name in screen_names:
+        if hasattr(main_window, screen_name):
+            apply_extruder_mode_visibility(getattr(main_window, screen_name), screen_name)
+    logger.info(f"Applied extruder mode '{get_extruder_mode()}' to screens: {sorted(screen_names)}")
 
 def configure_sensor_toggles_for_hybrid(widget):
     """
@@ -374,6 +470,7 @@ def apply_nozzle_config_to_screen(widget, screen_name):
     """
     hide_dual_nozzle_elements(widget, get_dual_nozzle_elements(screen_name))
     hide_hybrid_elements(widget, get_hybrid_hidden_elements(screen_name))
+    apply_extruder_mode_visibility(widget, screen_name)
     hide_heater_ring_elements(widget, get_heater_ring_elements(screen_name))
     hide_heated_chamber_elements(widget, get_heated_chamber_elements(screen_name))
     hide_spool_heater_elements(widget, get_spool_heater_elements(screen_name))

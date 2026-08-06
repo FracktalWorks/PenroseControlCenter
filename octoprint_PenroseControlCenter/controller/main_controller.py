@@ -285,6 +285,9 @@ class MainController(QtCore.QObject):
         self.octoprint_websocket.pellet_outage_signal.connect(self.onPelletOutage)
         # Hybrid IDEX extruder mode (pellet/filament) reported by Klipper
         self.octoprint_websocket.extruder_mode_signal.connect(self.printer_model.update_extruder_mode)
+        # Re-skin the touchscreen live when the mode changes (single-extruder
+        # presentation per mode - no firmware restart needed)
+        self.printer_model.extruder_mode_changed.connect(self.onExtruderModeChanged)
         # Note: filament_jam_sensor_triggered_signal is unused - neither the
         # pellet heads nor the Hybrid IDEX filament head has a flow sensor
         self.printer_model.pellet_sensor_state.connect(self.onPelletSensorState)
@@ -701,6 +704,20 @@ class MainController(QtCore.QObject):
         self.logger.info(f"Pellet level low detected on {tool}")
         # Note: Auto-refill is handled by the Klipper firmware macros
         # No action needed from the UI - the vacuum will automatically refill
+
+    def onExtruderModeChanged(self, mode):
+        """Re-skin the touchscreen for the new Hybrid IDEX extruder mode.
+
+        In either mode the machine presents as a single-extruder printer:
+        the Home screen shows only the mode's tool (plus H0 in pellet
+        mode). Runs live off the model signal - no restart needed.
+        """
+        try:
+            from utils.printer_ui_config import apply_extruder_mode_to_all_screens
+            self.logger.info(f"Extruder mode changed to '{mode}' - re-skinning screens")
+            apply_extruder_mode_to_all_screens(self.main_window)
+        except Exception as e:
+            self.logger.error(f"Error applying extruder mode to screens: {e}")
 
     def onFilamentRunout(self, tool):
         """Handle a filament runout on the Hybrid IDEX T1 head."""

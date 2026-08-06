@@ -533,12 +533,18 @@ class OctoPrintWebSocket(QThread):
                                 # "(applies at print start)")
                                 elif 'EXTRUDER_MODE:' in item:
                                     try:
-                                        mode = item.split('EXTRUDER_MODE:', 1)[1].split(' ', 1)[0].strip().lower()
-                                        if mode in ('pellet', 'filament'):
-                                            self.logger.info(f"Extruder mode reported: {mode}")
-                                            self.extruder_mode_signal.emit(mode)
+                                        if 'next print start' in item:
+                                            # Mode changed mid-print: it only engages at the
+                                            # next job (_APPLY_EXTRUDER_MODE confirms then),
+                                            # so keep the current-mode UI for the running print
+                                            self.logger.info(f"Extruder mode change deferred: {item}")
                                         else:
-                                            self.logger.warning(f"Unrecognized extruder mode in message: {item}")
+                                            mode = item.split('EXTRUDER_MODE:', 1)[1].split(' ', 1)[0].strip().lower()
+                                            if mode in ('pellet', 'filament'):
+                                                self.logger.info(f"Extruder mode reported: {mode}")
+                                                self.extruder_mode_signal.emit(mode)
+                                            else:
+                                                self.logger.warning(f"Unrecognized extruder mode in message: {item}")
                                     except Exception as e:
                                         self.logger.error(f"Error parsing extruder mode message: {e}")
 

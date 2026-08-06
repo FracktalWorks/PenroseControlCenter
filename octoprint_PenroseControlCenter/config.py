@@ -82,6 +82,11 @@ tool1PurgePosition = DEFAULT_TOOL1_PURGE_POSITION.copy()
 ptfeTubeLength = DEFAULT_PTFE_TUBE_LENGTH
 IS_DUAL_NOZZLE = DEFAULT_IS_DUAL_NOZZLE
 IS_HYBRID = DEFAULT_IS_HYBRID
+# Hybrid IDEX runtime extruder mode ('pellet' or 'filament'). Source of
+# truth is Klipper's variables.cfg; PrinterModel.update_extruder_mode()
+# mirrors it here so the UI-visibility helpers can read it dynamically
+# (same pattern as IS_HYBRID). 'pellet' matches the firmware default.
+EXTRUDER_MODE = 'pellet'
 HAS_HEATER_RING = DEFAULT_HAS_HEATER_RING
 HAS_HEATED_CHAMBER = DEFAULT_HAS_HEATED_CHAMBER
 HAS_SPOOL_HEATER = DEFAULT_HAS_SPOOL_HEATER
