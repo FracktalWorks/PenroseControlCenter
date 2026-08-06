@@ -218,7 +218,7 @@ def configure_sensor_toggles_for_hybrid(widget):
         return
     labels = {
         'feedRateLabelControlPage_3': 'T0 Pellet Level Sensor',
-        'feedRateLabelControlPage_2': 'T1 Filament Sensors',
+        'feedRateLabelControlPage_2': 'T1 Filament Runout Sensor',
     }
     for element_name, text in labels.items():
         element = getattr(widget, element_name, None)

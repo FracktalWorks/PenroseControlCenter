@@ -523,15 +523,6 @@ class OctoPrintWebSocket(QThread):
                                     except Exception as e:
                                         self.logger.error(f"Error emitting filament_runout_sensor_triggered_signal: {e}")
 
-                                # Hybrid IDEX T1 filament head - "Filament Flow Stall T1"
-                                elif 'Filament Flow Stall T' in item:
-                                    tool = item[item.index('Stall T') + 7:item.index('Stall T') + 8]
-                                    self.logger.warning(f"Filament flow stall detected on tool {tool}")
-                                    try:
-                                        self.filament_jam_sensor_triggered_signal.emit(tool)
-                                    except Exception as e:
-                                        self.logger.error(f"Error emitting filament_jam_sensor_triggered_signal: {e}")
-
                                 # Pellet outage detection - "Pellet Outage T0" or "Pellet Outage T1"
                                 elif 'Pellet Outage T' in item:
                                     # Find "Outage T" to get the correct T position

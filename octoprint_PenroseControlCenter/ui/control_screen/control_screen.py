@@ -243,9 +243,8 @@ class ControlScreen(QWidget):
             t0_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
             self.togglePelletSensorT0Button.setChecked(t0_sensor_enabled)
             if is_hybrid_printer():
-                # T1 is a filament extruder: one toggle drives both of its sensors
-                t1_sensor_enabled = bool(self.main_window.printer_model.extruder_runout_enabled) and \
-                    bool(self.main_window.printer_model.extruder_flow_enabled)
+                # T1 is a filament extruder - its toggle drives the runout switch
+                t1_sensor_enabled = bool(self.main_window.printer_model.extruder_runout_enabled)
             else:
                 t1_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t1_enabled)
             self.togglePelletSensorT1Button.setChecked(t1_sensor_enabled)
@@ -729,18 +728,17 @@ class ControlScreen(QWidget):
             dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT0: {e}", overlay=True)
 
     def togglePelletSensorT1(self):
-        """Toggle the T1 (Right) sensors and apply live state.
+        """Toggle the T1 (Right) sensor and apply live state.
 
-        On a Hybrid IDEX the right tool is a filament extruder, so this one
-        button drives both its runout and flow sensors. Elsewhere T1 is a
-        second pellet hopper with a level sensor.
+        On a Hybrid IDEX the right tool is a filament extruder, so this button
+        drives its runout switch. Elsewhere T1 is a second pellet hopper with
+        a level sensor.
         """
         logger.info("ControlScreen.togglePelletSensorT1 started")
         try:
             enabled = self.togglePelletSensorT1Button.isChecked()
             if is_hybrid_printer():
                 self.main_window.printer_model.set_extruder_runout_pref(enabled, persist=True)
-                self.main_window.printer_model.set_extruder_flow_pref(enabled, persist=True)
             else:
                 self.main_window.printer_model.set_pellet_sensor_t1_pref(enabled, persist=True)
             self.main_window.controller.apply_extruder_sensors()

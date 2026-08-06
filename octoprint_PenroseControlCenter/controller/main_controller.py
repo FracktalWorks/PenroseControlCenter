@@ -283,8 +283,8 @@ class MainController(QtCore.QObject):
         # Pellet sensor signals (Penrose pellet extruder uses pellet level sensors, not filament sensors)
         self.octoprint_websocket.filament_runout_sensor_triggered_signal.connect(self.pelletSensorLowTriggered)
         self.octoprint_websocket.pellet_outage_signal.connect(self.onPelletOutage)
-        # Flow/jam sensor only exists on the Hybrid IDEX filament head (T1)
-        self.octoprint_websocket.filament_jam_sensor_triggered_signal.connect(self.onFilamentFlowStall)
+        # Note: filament_jam_sensor_triggered_signal is unused - neither the
+        # pellet heads nor the Hybrid IDEX filament head has a flow sensor
         self.printer_model.pellet_sensor_state.connect(self.onPelletSensorState)
         self.octoprint_websocket.z_probing_failed_signal.connect(self.showProbingFailed)
         self.octoprint_websocket.printer_error_signal.connect(self.showPrinterError)
@@ -643,20 +643,17 @@ class MainController(QtCore.QObject):
             self.logger.error(f"Failed applying pellet sensor state: {e}")
 
     def apply_filament_sensor_state(self):
-        """Enable/disable the T1 filament sensors per preferences (Hybrid IDEX only).
+        """Enable/disable the T1 filament runout sensor per preference (Hybrid IDEX only).
 
-        Sensor names come from BASE_PENROSE_HYBRID.cfg:
-        - extruder_runout — filament runout switch
-        - extruder_flow   — filament motion/flow sensor
+        Sensor name comes from BASE_PENROSE_HYBRID.cfg: switch_sensor_E1.
+        There is no flow/motion sensor on this machine.
         """
         if not self.octoprint_client:
             return
         try:
             runout_state = 1 if getattr(self.printer_model, 'extruder_runout_enabled', True) else 0
-            flow_state = 1 if getattr(self.printer_model, 'extruder_flow_enabled', True) else 0
-            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE={runout_state}')
-            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE={flow_state}')
-            self.logger.info(f"Applied filament sensor state: runout={runout_state} flow={flow_state}")
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=switch_sensor_E1 ENABLE={runout_state}')
+            self.logger.info(f"Applied filament sensor state: runout={runout_state}")
         except Exception as e:
             self.logger.error(f"Failed applying filament sensor state: {e}")
 
@@ -664,7 +661,7 @@ class MainController(QtCore.QObject):
         """Apply every extruder sensor this machine has, per preferences.
 
         On the Hybrid IDEX both heads are present at once: the T0 pellet level
-        sensor and the T1 filament runout/flow sensors all apply.
+        sensor and the T1 filament runout switch both apply.
         """
         self.apply_pellet_sensor_state()
         if is_hybrid_printer():
@@ -683,8 +680,7 @@ class MainController(QtCore.QObject):
             if is_dual_nozzle_printer() and not is_hybrid_printer():
                 self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
             if is_hybrid_printer():
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE=0')
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE=0')
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=switch_sensor_E1 ENABLE=0')
             self.logger.info("Disabled extruder sensors")
         except Exception as e:
             self.logger.error(f"Failed disabling extruder sensors: {e}")
@@ -718,21 +714,6 @@ class MainController(QtCore.QObject):
             )
         except Exception as e:
             self.logger.error(f"Error showing filament runout dialog: {e}")
-
-    def onFilamentFlowStall(self, tool):
-        """Handle a filament flow stall (clog/jam) on the Hybrid IDEX T1 head."""
-        self.logger.warning(f"Filament flow stall detected on T{tool}")
-        try:
-            dialog.WarningOk(
-                self.main_window,
-                "Filament Flow Stalled - Right (T1)\n\n"
-                "Filament stopped moving while the extruder was\n"
-                "commanded to extrude - likely a clog or a stripped drive.\n\n"
-                "Clear the blockage, then press RESUME to continue printing.",
-                overlay=True
-            )
-        except Exception as e:
-            self.logger.error(f"Error showing filament flow stall dialog: {e}")
 
     def onPelletOutage(self, tool):
         """Handle pellet outage event - pellet supply exhausted after 60 second timeout.

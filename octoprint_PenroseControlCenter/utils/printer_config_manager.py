@@ -736,47 +736,50 @@ class PrinterConfigManager:
     # CAN toolhead MCU block, inserted into printer.cfg on machines whose
     # deployed config predates the Hybrid IDEX variant.
     TOOLHEAD_MCU_TEMPLATE = (
-        "\n# CAN toolhead - used only by the Hybrid IDEX filament head (T1).\n"
+        "\n# CAN toolhead (E1) - used only by the Hybrid IDEX filament head (T1).\n"
         "# The Printer Setup UI auto-comments/uncomments this block when you\n"
         "# switch printer variants. Fill the UUID in once and it is preserved\n"
         "# across all future printer changes and firmware updates.\n"
         "#   ~/klippy-env/bin/python ~/klipper/scripts/canbus_query.py can0\n"
-        "#[mcu toolhead0]\n"
+        "#[mcu E1]\n"
         "#canbus_uuid: XXXXXXXXXXXX\n"
     )
 
     def _sync_toolhead_mcu(self, mcu_section: str, selected_printer: str) -> str:
-        """Enable ``[mcu toolhead0]`` for Hybrid IDEX printers, disable it otherwise.
+        """Enable ``[mcu E1]`` for Hybrid IDEX printers, disable it otherwise.
 
-        The filament extruder on the Hybrid IDEX lives on a CAN toolhead board.
-        Klipper errors out on an MCU that no config section references, so the
-        block must be commented for every non-hybrid variant. The operator's
-        ``canbus_uuid`` value is never rewritten, only commented/uncommented,
-        so it survives printer switches and firmware updates.
+        The filament extruder on the Hybrid IDEX lives on a CAN toolhead board
+        aliased ``E1``. Klipper errors out on an MCU that no config section
+        references, so the block must be commented for every non-hybrid
+        variant. The operator's ``canbus_uuid`` value is never rewritten, only
+        commented/uncommented, so it survives printer switches and firmware
+        updates.
+
+        The mainboard's own ``[mcu]`` section is never touched.
 
         Adds the commented block if the section does not have one yet (machines
         whose deployed printer.cfg predates this variant).
         """
         want_uncommented = 'HYBRID' in (selected_printer or '').upper()
 
-        if '[mcu toolhead0]' not in mcu_section:
+        if '[mcu E1]' not in mcu_section:
             if not want_uncommented:
                 # Nothing to toggle and nothing to enable - leave as-is.
                 return mcu_section
             mcu_section = mcu_section.rstrip() + '\n' + self.TOOLHEAD_MCU_TEMPLATE
-            logger.info("Inserted [mcu toolhead0] block into MCU config for Hybrid IDEX")
+            logger.info("Inserted [mcu E1] block into MCU config for Hybrid IDEX")
 
         out_lines: List[str] = []
         in_block = False
         for line in mcu_section.split('\n'):
             bare = line.lstrip().lstrip('#').lstrip()
-            if bare.startswith('[mcu toolhead0]'):
+            if bare.startswith('[mcu E1]'):
                 in_block = True
                 out_lines.append(bare if want_uncommented else '#' + bare)
                 continue
             if in_block:
                 # End of block: blank line or the start of another section
-                if bare == '' or (bare.startswith('[') and not bare.startswith('[mcu toolhead0]')):
+                if bare == '' or (bare.startswith('[') and not bare.startswith('[mcu E1]')):
                     in_block = False
                     out_lines.append(line)
                     continue

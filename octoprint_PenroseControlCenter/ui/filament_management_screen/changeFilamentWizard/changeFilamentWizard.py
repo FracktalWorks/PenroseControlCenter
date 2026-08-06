@@ -557,17 +557,16 @@ class ChangeFilamentWizard(QWidget):
     # Internal helper utils
     # ---------------------
     def _suspend_filament_sensors(self):
-        """Disable the T1 filament sensors while the wizard drives the extruder.
+        """Disable the T1 filament runout sensor while the wizard drives the extruder.
 
-        Hand-driven load/unload looks exactly like a runout or a flow stall to
-        the sensors, which would pause the machine mid-wizard.
+        A hand-driven unload looks exactly like a runout to the sensor, which
+        would pause the machine mid-wizard.
         """
         if not is_hybrid_printer():
             return
         try:
-            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE=0')
-            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE=0')
-            logger.info("Suspended filament sensors for the duration of the wizard")
+            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=switch_sensor_E1 ENABLE=0')
+            logger.info("Suspended filament runout sensor for the duration of the wizard")
         except Exception as e:
             logger.error(f"Failed suspending filament sensors: {e}")
 
