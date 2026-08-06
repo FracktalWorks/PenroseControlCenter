@@ -21,7 +21,10 @@ except (ImportError, RuntimeError):
     GPIO = None
 
 from ._version import get_versions
-__version__ = get_versions()['version']
+_versioneer_info = get_versions()
+__version__ = _versioneer_info['version']
+# Commit hash is what the github_commit update checker compares against
+__commit__ = _versioneer_info.get('full-revisionid') or __version__
 del get_versions
 
 
@@ -632,18 +635,22 @@ sudo python3 main.py
     Update Management
     '''
     def get_update_information(self):
+        # Tracked by commit on the Hybrid IDEX branch, not by release tag:
+        # github_release would treat any new tag on the default branch as
+        # newer and overwrite this variant's changes on the next update.
         return dict(
             PenroseControlCenter=dict(
-                displayName="PenroseControlCenter",
+                displayName="PenroseControlCenter (Hybrid IDEX)",
                 displayVersion=self._plugin_version,
-                # version check: github repository
-                type="github_release",
+                # version check: github repository branch
+                type="github_commit",
                 user="FracktalWorks",
                 repo="PenroseControlCenter",
-                current=self._plugin_version,
+                branch="Hybrid-IDEX-Penrose-600",
+                current=__commit__,
 
                 # update method: pip
-                pip="https://github.com/FracktalWorks/PenroseControlCenter/archive/{target_version}.zip"
+                pip="https://github.com/FracktalWorks/PenroseControlCenter/archive/Hybrid-IDEX-Penrose-600.zip"
             )
         )
 

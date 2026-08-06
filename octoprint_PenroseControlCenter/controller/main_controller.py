@@ -26,7 +26,7 @@ from utils.helpers import run_async
 from utils import dialog
 from ui.loading_screen.loading_screen import LoadingScreen
 from config import ip, apiKey, CRITICAL_PRINTER_ERRORS, IGNORED_PRINTER_ERRORS
-from utils.printer_ui_config import is_dual_nozzle_printer
+from utils.printer_ui_config import is_dual_nozzle_printer, is_hybrid_printer
 
 
 logger = get_logger(__name__)
@@ -283,7 +283,8 @@ class MainController(QtCore.QObject):
         # Pellet sensor signals (Penrose pellet extruder uses pellet level sensors, not filament sensors)
         self.octoprint_websocket.filament_runout_sensor_triggered_signal.connect(self.pelletSensorLowTriggered)
         self.octoprint_websocket.pellet_outage_signal.connect(self.onPelletOutage)
-        # Note: filament_jam_sensor_triggered_signal not used for pellet extruder
+        # Flow/jam sensor only exists on the Hybrid IDEX filament head (T1)
+        self.octoprint_websocket.filament_jam_sensor_triggered_signal.connect(self.onFilamentFlowStall)
         self.printer_model.pellet_sensor_state.connect(self.onPelletSensorState)
         self.octoprint_websocket.z_probing_failed_signal.connect(self.showProbingFailed)
         self.octoprint_websocket.printer_error_signal.connect(self.showPrinterError)
@@ -619,10 +620,11 @@ class MainController(QtCore.QObject):
 
     def apply_pellet_sensor_state(self):
         """Enable/disable pellet level sensors per preferences.
-        
+
         Uses Klipper's SET_FILAMENT_SENSOR command with the sensor names:
         - pellet_sensor_left (T0) — always present
-        - pellet_sensor_right (T1) — dual nozzle only
+        - pellet_sensor_right (T1) — dual pellet nozzle only (not on Hybrid IDEX,
+          whose right tool is a filament extruder with no hopper)
         """
         if not self.octoprint_client:
             return
@@ -630,25 +632,107 @@ class MainController(QtCore.QObject):
             t0_enabled = getattr(self.printer_model, 'pellet_sensor_t0_enabled', True)
             t0_state = 1 if t0_enabled else 0
             self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE={t0_state}')
-            if is_dual_nozzle_printer():
+            if is_dual_nozzle_printer() and not is_hybrid_printer():
                 t1_enabled = getattr(self.printer_model, 'pellet_sensor_t1_enabled', True)
                 t1_state = 1 if t1_enabled else 0
                 self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE={t1_state}')
                 self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} T1(right)={t1_state}")
             else:
-                self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} (single nozzle)")
+                self.logger.info(f"Applied pellet sensor state: T0(left)={t0_state} (no right hopper)")
         except Exception as e:
             self.logger.error(f"Failed applying pellet sensor state: {e}")
 
-    def pelletSensorLowTriggered(self, tool):
-        """Handle pellet level low event - this is informational only.
-        
-        The pellet sensor firmware handles auto-refill automatically.
-        This method is for logging/notification purposes.
+    def apply_filament_sensor_state(self):
+        """Enable/disable the T1 filament sensors per preferences (Hybrid IDEX only).
+
+        Sensor names come from BASE_PENROSE_HYBRID.cfg:
+        - extruder_runout — filament runout switch
+        - extruder_flow   — filament motion/flow sensor
         """
+        if not self.octoprint_client:
+            return
+        try:
+            runout_state = 1 if getattr(self.printer_model, 'extruder_runout_enabled', True) else 0
+            flow_state = 1 if getattr(self.printer_model, 'extruder_flow_enabled', True) else 0
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE={runout_state}')
+            self.octoprint_client.gcode(command=f'SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE={flow_state}')
+            self.logger.info(f"Applied filament sensor state: runout={runout_state} flow={flow_state}")
+        except Exception as e:
+            self.logger.error(f"Failed applying filament sensor state: {e}")
+
+    def apply_extruder_sensors(self):
+        """Apply every extruder sensor this machine has, per preferences.
+
+        On the Hybrid IDEX both heads are present at once: the T0 pellet level
+        sensor and the T1 filament runout/flow sensors all apply.
+        """
+        self.apply_pellet_sensor_state()
+        if is_hybrid_printer():
+            self.apply_filament_sensor_state()
+
+    def disable_extruder_sensors(self):
+        """Disable every extruder sensor - used on pause/cancel/print completion.
+
+        Leaving sensors armed outside a print makes a manual unload or purge
+        look like a runout and spuriously pauses the next job.
+        """
+        if not self.octoprint_client:
+            return
+        try:
+            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+            if is_dual_nozzle_printer() and not is_hybrid_printer():
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+            if is_hybrid_printer():
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE=0')
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE=0')
+            self.logger.info("Disabled extruder sensors")
+        except Exception as e:
+            self.logger.error(f"Failed disabling extruder sensors: {e}")
+
+    def pelletSensorLowTriggered(self, tool):
+        """Handle a runout event from either extruder head type.
+
+        For pellet heads this is informational only - the Klipper macros run
+        auto-refill on their own. On a Hybrid IDEX, T1 is a filament head, so
+        the same signal means the spool has actually run out and the operator
+        needs to know.
+        """
+        if is_hybrid_printer() and str(tool) == "1":
+            self.onFilamentRunout(tool)
+            return
         self.logger.info(f"Pellet level low detected on {tool}")
         # Note: Auto-refill is handled by the Klipper firmware macros
         # No action needed from the UI - the vacuum will automatically refill
+
+    def onFilamentRunout(self, tool):
+        """Handle a filament runout on the Hybrid IDEX T1 head."""
+        self.logger.warning(f"Filament runout detected on T{tool}")
+        try:
+            dialog.WarningOk(
+                self.main_window,
+                "Filament Runout - Right (T1)\n\n"
+                "The filament extruder has run out of filament.\n\n"
+                "Load new filament from the Filament screen,\n"
+                "then press RESUME to continue printing.",
+                overlay=True
+            )
+        except Exception as e:
+            self.logger.error(f"Error showing filament runout dialog: {e}")
+
+    def onFilamentFlowStall(self, tool):
+        """Handle a filament flow stall (clog/jam) on the Hybrid IDEX T1 head."""
+        self.logger.warning(f"Filament flow stall detected on T{tool}")
+        try:
+            dialog.WarningOk(
+                self.main_window,
+                "Filament Flow Stalled - Right (T1)\n\n"
+                "Filament stopped moving while the extruder was\n"
+                "commanded to extrude - likely a clog or a stripped drive.\n\n"
+                "Clear the blockage, then press RESUME to continue printing.",
+                overlay=True
+            )
+        except Exception as e:
+            self.logger.error(f"Error showing filament flow stall dialog: {e}")
 
     def onPelletOutage(self, tool):
         """Handle pellet outage event - pellet supply exhausted after 60 second timeout.
@@ -955,8 +1039,8 @@ class MainController(QtCore.QObject):
         self.logger.info("MainController.onStartupCompleted started")
         if self.octoprint_client:
             try:
-                # Apply pellet sensor preferences on startup
-                self.apply_pellet_sensor_state()
+                # Apply extruder sensor preferences on startup
+                self.apply_extruder_sensors()
                 # Reload printer configuration from Klipper after connection is established
                 self.printer_model.reload_printer_configuration()
                 
@@ -1027,8 +1111,8 @@ class MainController(QtCore.QObject):
             elif not self.printer_model.print_compatibility_check_enabled:
                 self.logger.info("Print compatibility check is disabled, skipping validation")
             
-            # Apply pellet sensor state if print continues
-            self.apply_pellet_sensor_state()
+            # Apply extruder sensor state if print continues
+            self.apply_extruder_sensors()
             
             # Navigate to home screen when print starts
             self.logger.info("Navigating to home screen after print started")
@@ -1040,18 +1124,15 @@ class MainController(QtCore.QObject):
     def onPrintResumed(self, event):
         try:
             self.logger.info("MainController.onPrintResumed invoked")
-            self.apply_pellet_sensor_state()
+            self.apply_extruder_sensors()
         except Exception as e:
             self.logger.error(f"Error in onPrintResumed: {e}")
 
     def onPrintPaused(self, event):
         try:
             self.logger.info("MainController.onPrintPaused invoked")
-            if self.octoprint_client:
-                # Disable pellet sensors when print is paused (stops auto-refill)
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                if is_dual_nozzle_printer():
-                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+            # Disable extruder sensors when print is paused (stops auto-refill)
+            self.disable_extruder_sensors()
         except Exception as e:
             self.logger.error(f"Error in onPrintPaused: {e}")
 
@@ -1059,10 +1140,8 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintCancelled invoked")
             if self.octoprint_client:
-                # Disable pellet sensors immediately
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                if is_dual_nozzle_printer():
-                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                # Disable extruder sensors immediately
+                self.disable_extruder_sensors()
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:
@@ -1072,10 +1151,8 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintCompleted invoked")
             if self.octoprint_client:
-                # Disable pellet sensors immediately
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-                if is_dual_nozzle_printer():
-                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+                # Disable extruder sensors immediately
+                self.disable_extruder_sensors()
                 # Cool down the printer
                 self.coolDownAction()
         except Exception as e:

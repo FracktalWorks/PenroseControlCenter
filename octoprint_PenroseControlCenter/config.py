@@ -68,6 +68,7 @@ DEFAULT_TOOL0_PURGE_POSITION = {'X': -30, 'Y': -77}
 DEFAULT_TOOL1_PURGE_POSITION = {'X': 655, 'Y': -77}
 DEFAULT_PTFE_TUBE_LENGTH = 1500  # 2400 for 600x600, 1500 for 600x300 keep as multiples of 300 only
 DEFAULT_IS_DUAL_NOZZLE = True  # Set to False for single nozzle printers
+DEFAULT_IS_HYBRID = False  # True for Hybrid IDEX (T0 pellet auger, T1 filament extruder)
 DEFAULT_HAS_HEATER_RING = False  # Set to True for Volterra ALF printers with heater ring
 DEFAULT_HAS_HEATED_CHAMBER = False  # Set to True for printers with heated chamber/enclosure
 DEFAULT_HAS_SPOOL_HEATER = False  # Set to True for printers with filament spool heater/dryer
@@ -80,6 +81,7 @@ tool0PurgePosition = DEFAULT_TOOL0_PURGE_POSITION.copy()
 tool1PurgePosition = DEFAULT_TOOL1_PURGE_POSITION.copy()
 ptfeTubeLength = DEFAULT_PTFE_TUBE_LENGTH
 IS_DUAL_NOZZLE = DEFAULT_IS_DUAL_NOZZLE
+IS_HYBRID = DEFAULT_IS_HYBRID
 HAS_HEATER_RING = DEFAULT_HAS_HEATER_RING
 HAS_HEATED_CHAMBER = DEFAULT_HAS_HEATED_CHAMBER
 HAS_SPOOL_HEATER = DEFAULT_HAS_SPOOL_HEATER
@@ -102,7 +104,7 @@ def load_printer_config_from_klipper():
             
         global calibrationPosition, machineBuildSize, tool0PurgePosition
         global tool1PurgePosition, ptfeTubeLength, IS_DUAL_NOZZLE, HAS_HEATER_RING
-        global HAS_HEATED_CHAMBER, HAS_SPOOL_HEATER
+        global HAS_HEATED_CHAMBER, HAS_SPOOL_HEATER, IS_HYBRID
         
         # Update global variables with extracted configuration
         if 'calibrationPosition' in config:
@@ -122,6 +124,9 @@ def load_printer_config_from_klipper():
             
         if 'IS_DUAL_NOZZLE' in config:
             IS_DUAL_NOZZLE = config['IS_DUAL_NOZZLE']
+
+        if 'IS_HYBRID' in config:
+            IS_HYBRID = config['IS_HYBRID']
 
         if 'HAS_HEATER_RING' in config:
             HAS_HEATER_RING = config['HAS_HEATER_RING']
@@ -159,6 +164,7 @@ def get_printer_config():
         'tool1PurgePosition': tool1PurgePosition,
         'ptfeTubeLength': ptfeTubeLength,
         'IS_DUAL_NOZZLE': IS_DUAL_NOZZLE,
+        'IS_HYBRID': IS_HYBRID,
         'HAS_HEATER_RING': HAS_HEATER_RING,
         'HAS_HEATED_CHAMBER': HAS_HEATED_CHAMBER,
         'HAS_SPOOL_HEATER': HAS_SPOOL_HEATER

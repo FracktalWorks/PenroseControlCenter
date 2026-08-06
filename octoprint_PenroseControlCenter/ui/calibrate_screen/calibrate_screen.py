@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QWidget, QToolButton, QPushButton, QStackedWidget
 from PyQt5 import uic
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen
+from utils.printer_ui_config import apply_nozzle_config_to_screen, is_hybrid_printer
 from utils import dialog
 
 # Import all calibration sub-screens
@@ -65,7 +65,8 @@ class CalibrateScreen(QWidget):
         self.calibrationWizardButton.clicked.connect(lambda: self.show_calibrate_screen("bed_leveling"))
         self.inputShaperCalibrateButton.clicked.connect(self.inputShaperCalibrate)
 
-        # Temporarily disable input shaper button - TODO: Re-enable when ready
+        # Input shaping needs an accelerometer. Only the Hybrid IDEX has one
+        # (ADXL345 on the T1 CAN toolhead); disabled on every other variant.
         self.inputShaperCalibrateButton.setEnabled(False)
         
         self.cameraToolOffsetCalibrateButton.clicked.connect(lambda: self.show_calibrate_screen("camera_tool_offset"))
@@ -134,6 +135,10 @@ class CalibrateScreen(QWidget):
         try:
             dialog.WarningOk(self, "Wait for all calibration movements to finish before proceeding.", overlay=True)
             self.octoprint_client.gcode(command='G28')
+            if is_hybrid_printer():
+                # The ADXL345 rides the T1 carriage - it has to be the moving
+                # one or the resonance measurements are meaningless.
+                self.octoprint_client.gcode(command='T1')
             self.octoprint_client.gcode(command='SHAPER_CALIBRATE')
             self.octoprint_client.gcode(command='SAVE_CONFIG')
 
@@ -201,10 +206,9 @@ class CalibrateScreen(QWidget):
             
             # List all calibration buttons that should be disabled when Klipper is not ready
             # Keep the back button always enabled
-            # inputShaperCalibrateButton excluded - permanently disabled for now
+            # inputShaperCalibrateButton is handled separately - it also needs an accelerometer
             calibration_buttons = [
                 self.calibrationWizardButton,
-                # self.inputShaperCalibrateButton,  # Temporarily disabled
                 self.cameraToolOffsetCalibrateButton,
                 self.nozzleOffsetButton,
                 self.toolOffsetZButton,
@@ -218,6 +222,10 @@ class CalibrateScreen(QWidget):
             for button in calibration_buttons:
                 if button:  # Check if button exists (some may be None)
                     button.setEnabled(is_ready)
-                    
+
+            # Input shaping additionally requires the ADXL345 on the T1 CAN toolhead
+            if self.inputShaperCalibrateButton:
+                self.inputShaperCalibrateButton.setEnabled(is_ready and is_hybrid_printer())
+
         except Exception as e:
             self.logger.error(f"Error updating CalibrateScreen UI for Klipper state {state}: {e}")

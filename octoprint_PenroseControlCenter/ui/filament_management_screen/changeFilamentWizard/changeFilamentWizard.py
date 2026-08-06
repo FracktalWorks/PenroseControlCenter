@@ -49,7 +49,7 @@ from PyQt5 import uic, QtCore
 from PyQt5.QtWidgets import QWidget, QPushButton, QStackedWidget, QComboBox, QProgressBar, QLabel
 from utils.helpers import check_ui_elements, run_async
 from utils.logger import get_logger
-from utils.printer_ui_config import is_dual_nozzle_printer, force_single_tool
+from utils.printer_ui_config import is_dual_nozzle_printer, force_single_tool, is_hybrid_printer
 from utils import dialog
 
 # UI/logic constants
@@ -172,6 +172,7 @@ class ChangeFilamentWizard(QWidget):
         # None means no operation yet; set True on load, False on unload
         self.loadFlag = None
         self.changeFilamentHeatingFlag = False
+        self._suspend_filament_sensors()
         try:
             self.stackedWidget.setCurrentWidget(self.changeFilamentPage)
             time.sleep(1)
@@ -221,10 +222,11 @@ class ChangeFilamentWizard(QWidget):
             self._disconnect_temperature_signal()
             if self.model.printer_status not in ["Printing", "Paused"]:
                 self.main_window.control_screen.coolDownAction()
-            self.main_window.filament_management_screen.show_material_nozzle_screen()     
+            self.main_window.filament_management_screen.show_material_nozzle_screen()
             self.stackedWidget.setCurrentWidget(self.changeFilamentPage)
             self.loadFlag = None
             self.changeFilamentHeatingFlag = False
+            self._restore_filament_sensors()
         except Exception as e:
             logger.error(f"Error in ChangeFilament.changeFilamentCancel: {e}")
             dialog.WarningOk(self, f"Error in ChangeFilament.changeFilamentCancel: {e}", overlay=True)
@@ -546,6 +548,7 @@ class ChangeFilamentWizard(QWidget):
             self.changeFilamentHeatingFlag = False
             # Reset the flag to avoid unintended reuse
             self.loadFlag = None
+            self._restore_filament_sensors()
         except Exception as e:
             logger.error(f"Error in ChangeFilament.changeFilamentDone: {e}")
             dialog.WarningOk(self, f"Error in ChangeFilament.changeFilamentDone: {e}", overlay=True)
@@ -553,6 +556,30 @@ class ChangeFilamentWizard(QWidget):
     # ---------------------
     # Internal helper utils
     # ---------------------
+    def _suspend_filament_sensors(self):
+        """Disable the T1 filament sensors while the wizard drives the extruder.
+
+        Hand-driven load/unload looks exactly like a runout or a flow stall to
+        the sensors, which would pause the machine mid-wizard.
+        """
+        if not is_hybrid_printer():
+            return
+        try:
+            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_runout ENABLE=0')
+            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=extruder_flow ENABLE=0')
+            logger.info("Suspended filament sensors for the duration of the wizard")
+        except Exception as e:
+            logger.error(f"Failed suspending filament sensors: {e}")
+
+    def _restore_filament_sensors(self):
+        """Re-apply the user's filament sensor preferences after the wizard exits."""
+        if not is_hybrid_printer():
+            return
+        try:
+            self.main_window.controller.apply_filament_sensor_state()
+        except Exception as e:
+            logger.error(f"Failed restoring filament sensors: {e}")
+
     def _jog_to_purge_position(self):
         """Jog the printer to the purge position for the active extruder, if safe to move."""
         try:

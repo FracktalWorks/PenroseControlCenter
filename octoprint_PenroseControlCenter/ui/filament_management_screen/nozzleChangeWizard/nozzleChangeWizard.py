@@ -308,7 +308,7 @@ class NozzleChangeWizard(QWidget):
 
 			self.changeNozzleComboBox.clear()
 			self.changeNozzleComboBox.addItem("Select Size")
-			options = list(getattr(self.model, 'nozzle_options', []) or [])
+			options = list(self.model.nozzle_options_for_tool(self.active_tool) or [])
 			if not options:
 				options = ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]
 			for opt in options:

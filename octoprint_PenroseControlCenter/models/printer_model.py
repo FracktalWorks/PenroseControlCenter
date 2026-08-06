@@ -87,12 +87,16 @@ class PrinterModel(QObject):
         self.ptfeTubeLength = config.ptfeTubeLength
         self.machineBuildSize = config.machineBuildSize
         self.IS_DUAL_NOZZLE = config.IS_DUAL_NOZZLE
+        self.IS_HYBRID = config.IS_HYBRID
         # Klipper state cache
         self.klipper_state = "unknown"
         # Tool state persistence
         # self.status_options = ["Empty", "Unknown", "Loaded", "Staged"]
         self.status_options = ["Empty", "Loaded"]
-        self.nozzle_options = ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]
+        # Nozzle sizes differ per extruder head type. Use nozzle_options_for_tool()
+        # so a Hybrid IDEX offers filament sizes on T1 and pellet sizes on T0.
+        self._pellet_nozzle_options = ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]
+        self._filament_nozzle_options = ["0.25", "0.4", "0.6", "0.8", "1.0"]
         # Nested per-bay structure per tool; defaults reflect current A/B mapping
         self.tools = {
             "tool0": {
@@ -115,6 +119,9 @@ class PrinterModel(QObject):
         prefs = state.get("preferences", {})
         self.pellet_sensor_t0_enabled = bool(prefs.get("pellet_sensor_t0_enabled", True))  # Default to enabled
         self.pellet_sensor_t1_enabled = bool(prefs.get("pellet_sensor_t1_enabled", True))  # Default to enabled
+        # Filament sensors on the Hybrid IDEX T1 head (runout switch + flow/motion sensor)
+        self.extruder_runout_enabled = bool(prefs.get("extruder_runout_enabled", True))  # Default to enabled
+        self.extruder_flow_enabled = bool(prefs.get("extruder_flow_enabled", True))  # Default to enabled
         self.print_compatibility_check_enabled = bool(prefs.get("print_compatibility_check_enabled", True))  # Default to enabled
         
         # Print restore preferences
@@ -143,6 +150,37 @@ class PrinterModel(QObject):
         # Ring heater power storage
         self.ring_heater_power = 0  # Default 0 (0-255 range)
 
+    # --- Nozzle options ---------------------------------------------------
+    def nozzle_options_for_tool(self, tool):
+        """Return the selectable nozzle sizes for a tool's extruder head.
+
+        Args:
+            tool: Tool identifier - "tool0"/"tool1", or 0/1
+        """
+        try:
+            from utils.printer_ui_config import tool_head_type
+            if tool_head_type(tool) == 'filament':
+                return list(self._filament_nozzle_options)
+        except Exception as e:
+            self.logger.error(f"Failed to resolve extruder head type for {tool}: {e}")
+        return list(self._pellet_nozzle_options)
+
+    @property
+    def nozzle_options(self):
+        """All nozzle sizes valid on this machine, across both extruder heads.
+
+        Prefer nozzle_options_for_tool() - this union exists so callers that
+        only validate a size (with no tool in hand) keep working.
+        """
+        merged = list(self._pellet_nozzle_options)
+        try:
+            from utils.printer_ui_config import is_hybrid_printer
+            if is_hybrid_printer():
+                merged += [n for n in self._filament_nozzle_options if n not in merged]
+        except Exception as e:
+            self.logger.error(f"Failed to resolve hybrid printer state: {e}")
+        return merged
+
     # --- Pellet sensor preference setters (called by controller/UI) -------
     def set_pellet_sensor_t0_pref(self, enabled: bool, persist: bool = True):
         """Set T0 (Left) pellet level sensor preference and persist if requested."""
@@ -157,6 +195,20 @@ class PrinterModel(QObject):
         self.pellet_sensor_t1_enabled = bool(enabled)
         if persist and prev != enabled:
             self._config_store.set_preference('pellet_sensor_t1_enabled', bool(enabled))
+
+    def set_extruder_runout_pref(self, enabled: bool, persist: bool = True):
+        """Set T1 filament runout sensor preference and persist if requested."""
+        prev = self.extruder_runout_enabled
+        self.extruder_runout_enabled = bool(enabled)
+        if persist and prev != enabled:
+            self._config_store.set_preference('extruder_runout_enabled', bool(enabled))
+
+    def set_extruder_flow_pref(self, enabled: bool, persist: bool = True):
+        """Set T1 filament flow/motion sensor preference and persist if requested."""
+        prev = self.extruder_flow_enabled
+        self.extruder_flow_enabled = bool(enabled)
+        if persist and prev != enabled:
+            self._config_store.set_preference('extruder_flow_enabled', bool(enabled))
 
     def set_print_compatibility_check_pref(self, enabled: bool, persist: bool = True):
         """Set print compatibility check preference and persist if requested."""
@@ -441,13 +493,14 @@ class PrinterModel(QObject):
         self.update_failed_signal.emit(update_info)
 
     # --- Tool state persistence helpers ---
-    def _sanitize_bay_state(self, v: dict) -> dict:
+    def _sanitize_bay_state(self, v: dict, tool: str = None) -> dict:
         filament = v.get("filament")
         status = v.get("status", "Unknown")
         nozzle = v.get("nozzle", "Unknown")
         if status not in self.status_options:
             status = "Unknown"
-        if nozzle not in self.nozzle_options and nozzle != "Unknown":
+        valid_nozzles = self.nozzle_options_for_tool(tool) if tool else self.nozzle_options
+        if nozzle not in valid_nozzles and nozzle != "Unknown":
             nozzle = "Unknown"
         return {"filament": filament, "status": status, "nozzle": nozzle}
 
@@ -458,7 +511,7 @@ class PrinterModel(QObject):
                 # Already upgraded by store; just validate & copy
                 cleaned = {}
                 for bay, v in raw.items():
-                    cleaned[bay] = self._sanitize_bay_state(v)
+                    cleaned[bay] = self._sanitize_bay_state(v, tool_id)
                 if not cleaned:
                     cleaned = {("material_bay_a" if tool_id == "tool0" else "material_bay_x"): {"filament": None, "status": "Unknown", "nozzle": "Unknown"}}
                 self.tools[tool_id] = cleaned
@@ -475,7 +528,7 @@ class PrinterModel(QObject):
         # Validate inputs
         if status is not None and status not in self.status_options:
             status = "Unknown"
-        if nozzle is not None and (nozzle not in self.nozzle_options and nozzle != "Unknown"):
+        if nozzle is not None and (nozzle not in self.nozzle_options_for_tool(tool) and nozzle != "Unknown"):
             nozzle = "Unknown"
         cur = self._config_store.set_tool_state(tool, bay=bay, filament=filament if filament is not None else None,
                                                 status=status if status is not None else None,
@@ -542,6 +595,7 @@ class PrinterModel(QObject):
                 self.ptfeTubeLength = config.ptfeTubeLength
                 self.machineBuildSize = config.machineBuildSize
                 self.IS_DUAL_NOZZLE = config.IS_DUAL_NOZZLE
+                self.IS_HYBRID = config.IS_HYBRID
                 self.HAS_HEATER_RING = config.HAS_HEATER_RING
                 self.HAS_HEATED_CHAMBER = config.HAS_HEATED_CHAMBER
                 self.HAS_SPOOL_HEATER = config.HAS_SPOOL_HEATER
@@ -572,6 +626,7 @@ class PrinterModel(QObject):
             'tool1PurgePosition': self.tool1PurgePosition,
             'ptfeTubeLength': self.ptfeTubeLength,
             'IS_DUAL_NOZZLE': self.IS_DUAL_NOZZLE,
+            'IS_HYBRID': getattr(self, 'IS_HYBRID', False),
             'HAS_HEATER_RING': getattr(self, 'HAS_HEATER_RING', False),
             'HAS_HEATED_CHAMBER': getattr(self, 'HAS_HEATED_CHAMBER', False),
             'HAS_SPOOL_HEATER': getattr(self, 'HAS_SPOOL_HEATER', False)

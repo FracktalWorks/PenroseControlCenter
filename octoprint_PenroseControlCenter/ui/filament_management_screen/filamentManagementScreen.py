@@ -6,14 +6,16 @@ from PyQt5.QtCore import Qt
 from PyQt5 import uic
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer
+from utils.printer_ui_config import (apply_nozzle_config_to_screen, is_dual_nozzle_printer,
+                                     is_hybrid_printer, is_filament_tool)
 from utils import dialog
 from utils import styles
 import config
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QFormLayout, QComboBox, QHBoxLayout
 
-# Import sub-screens (only nozzle change wizard needed now)
+# Import sub-screens (nozzle change wizard always; filament wizard for filament heads)
 from ui.filament_management_screen.nozzleChangeWizard.nozzleChangeWizard import NozzleChangeWizard
+from ui.filament_management_screen.changeFilamentWizard.changeFilamentWizard import ChangeFilamentWizard
 
 logger = get_logger(__name__)
 
@@ -84,9 +86,10 @@ class filamentManagementScreen(QWidget):
         self.screens = {}
         self._initialize_sub_screens()
 
-        # Connect material buttons to pellet loading dialog (replaces filament change wizard)
-        self.changeTool0MaterialBayA.clicked.connect(lambda: self._show_pellet_load_dialog("tool0"))
-        self.changeTool1MaterialBayX.clicked.connect(lambda: self._show_pellet_load_dialog("tool1"))
+        # Material buttons route by head type: pellet heads get the line vac
+        # load dialog, filament heads get the load/unload wizard.
+        self.changeTool0MaterialBayA.clicked.connect(lambda: self._on_material_button_clicked("tool0"))
+        self.changeTool1MaterialBayX.clicked.connect(lambda: self._on_material_button_clicked("tool1"))
 
         self.changeTool0Button.clicked.connect(
             lambda: self.show_material_nozzle_screen(target_screen="nozzle_change", params={"tool": "tool0"})
@@ -165,8 +168,11 @@ class filamentManagementScreen(QWidget):
     def _initialize_sub_screens(self):
         """Initialize all filament/nozzle sub-screens"""
         try:
-            # Only nozzle change wizard needed - pellet loading uses a dialog
+            # Nozzle change wizard is always available; pellet loading uses a
+            # dialog, while filament heads need the load/unload wizard.
             self.screens["nozzle_change"] = NozzleChangeWizard(self.main_window)
+            if is_hybrid_printer():
+                self.screens["change_filament"] = ChangeFilamentWizard(self.main_window)
 
             # Add each screen to the stacked widget
             for name, screen in self.screens.items():
@@ -310,9 +316,11 @@ class filamentManagementScreen(QWidget):
         pellet_sensor_state_map in printer_model.
         """
         try:
-            # Send query commands to Klipper - responses are parsed by websocket_client
-            # Only query pellet_sensor_right on dual nozzle printers (sensor doesn't exist on single)
-            if is_dual_nozzle_printer():
+            # Send query commands to Klipper - responses are parsed by websocket_client.
+            # pellet_sensor_right only exists on dual *pellet* printers: single nozzle
+            # machines have no right hopper, and the Hybrid IDEX has a filament head there.
+            has_right_hopper = is_dual_nozzle_printer() and not is_hybrid_printer()
+            if has_right_hopper:
                 self.octoprint_client.gcode(
                     command='QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_left\n'
                             'QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_right'
@@ -322,24 +330,25 @@ class filamentManagementScreen(QWidget):
                     command='QUERY_FILAMENT_SENSOR SENSOR=pellet_sensor_left'
                 )
             self.logger.debug("Sent pellet sensor query commands")
-            
+
             # Also update UI from current state map (may have been updated by previous responses)
             model = self.main_window.printer_model
             sensor_map = getattr(model, 'pellet_sensor_state_map', {})
-            
+
             # Get sensor states (True = pellets detected, False = empty)
             left_detected = sensor_map.get('pellet_sensor_left', None)
-            
+
             # Update UI for tool0 (left)
             self._update_pellet_sensor_display("tool0", left_detected)
-            
-            # Update UI for tool1 (right) — dual nozzle only
-            if is_dual_nozzle_printer():
+
+            # Update UI for tool1 (right) — dual pellet nozzle only. On a Hybrid
+            # IDEX tool1's label shows its filament bay state instead.
+            if has_right_hopper:
                 right_detected = sensor_map.get('pellet_sensor_right', None)
                 self._update_pellet_sensor_display("tool1", right_detected)
                 self.logger.debug(f"Pellet sensors state - Left: {left_detected}, Right: {right_detected}")
             else:
-                self.logger.debug(f"Pellet sensors state - Left: {left_detected} (single nozzle)")
+                self.logger.debug(f"Pellet sensors state - Left: {left_detected} (no right hopper)")
         except Exception as e:
             self.logger.error(f"Error polling pellet sensors: {e}")
 
@@ -353,7 +362,7 @@ class filamentManagementScreen(QWidget):
         try:
             if sensor == 'pellet_sensor_left':
                 self._update_pellet_sensor_display("tool0", is_ok)
-            elif sensor == 'pellet_sensor_right':
+            elif sensor == 'pellet_sensor_right' and not is_filament_tool("tool1"):
                 self._update_pellet_sensor_display("tool1", is_ok)
             self.logger.debug(f"Pellet sensor state changed - {sensor}: {is_ok}")
         except Exception as e:
@@ -387,17 +396,33 @@ class filamentManagementScreen(QWidget):
             if self.tool11MaterialBayXStateColor:
                 self.tool11MaterialBayXStateColor.setStyleSheet(status_style)
 
+    # --- Material change routing ---
+    def _on_material_button_clicked(self, tool: str):
+        """Route a material change to the right flow for the tool's extruder head.
+
+        Pellet heads open the line vac load dialog; filament heads (T1 on a
+        Hybrid IDEX) open the filament load/unload wizard.
+        """
+        if is_filament_tool(tool):
+            self.show_material_nozzle_screen(target_screen="change_filament", params={"tool": tool})
+        else:
+            self._show_pellet_load_dialog(tool)
+
     # --- Pellet Loading Dialog ---
     def _show_pellet_load_dialog(self, tool: str):
         """Show a dialog to control the line vac for loading pellets into the hopper.
-        
+
         Args:
             tool: "tool0" or "tool1"
         """
+        if is_filament_tool(tool):
+            self.logger.error(f"Pellet load dialog requested for filament head {tool} - ignoring")
+            return
+
         tool_num = "0" if tool == "tool0" else "1"
         tool_name = "Left (T0)" if tool == "tool0" else "Right (T1)"
         vac_pin = "pellet_vac_left" if tool == "tool0" else "pellet_vac_right"
-        
+
         self.logger.info(f"Opening pellet load dialog for {tool}")
         
         # Track vac state
@@ -647,7 +672,7 @@ class filamentManagementScreen(QWidget):
         except Exception:
             pass
         cb_nozzle.addItem("Unknown")
-        for n in getattr(model, 'nozzle_options', ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]):
+        for n in model.nozzle_options_for_tool(tool):
             cb_nozzle.addItem(n)
         idx = cb_nozzle.findText(current.get("nozzle", "Unknown"))
         if idx >= 0:

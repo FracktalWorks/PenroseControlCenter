@@ -321,6 +321,7 @@ class PrinterConfigManager:
                 'z_max': variables.get('bed_z_max', 200),
             },
             'is_dual_nozzle': bool(variables.get('is_dual_nozzle', 1)),
+            'is_hybrid': bool(variables.get('is_hybrid', 0)),
             'has_heater_ring': bool(variables.get('has_heater_ring', 0)),
             'has_heated_chamber': bool(variables.get('has_heated_chamber', 0)),
             'has_spool_heater': bool(variables.get('has_spool_heater', 0)),
@@ -358,6 +359,8 @@ class PrinterConfigManager:
             # Other settings
             'ptfeTubeLength': variables.get('ptfe_tube_length', 1500),
             'IS_DUAL_NOZZLE': bool(variables.get('is_dual_nozzle', 1)),
+            # Hybrid IDEX: T0 is a pellet auger, T1 is a filament extruder
+            'IS_HYBRID': bool(variables.get('is_hybrid', 0)),
             'HAS_HEATER_RING': bool(variables.get('has_heater_ring', 0)),
             'HAS_HEATED_CHAMBER': bool(variables.get('has_heated_chamber', 0)),
             'HAS_SPOOL_HEATER': bool(variables.get('has_spool_heater', 0)),
@@ -618,6 +621,12 @@ class PrinterConfigManager:
                     # Continue without preserving sections
                     existing_mcu_section = ""
                     existing_save_config_section = ""
+
+            # Enable the CAN toolhead MCU only for Hybrid IDEX printers.
+            # Done on the *preserved* section so the operator's canbus_uuid
+            # survives every printer switch and firmware update.
+            if existing_mcu_section:
+                existing_mcu_section = self._sync_toolhead_mcu(existing_mcu_section, selected_printer)
             else:
                 if not preserve_mcu:
                     logger.info("MCU and SAVE_CONFIG preservation disabled")
@@ -698,6 +707,11 @@ class PrinterConfigManager:
                 final_content += "\n\n" + existing_save_config_section
                 logger.info("Appended preserved SAVE_CONFIG section")
                     
+            # No preserved MCU block (first deployment): toggle the CAN
+            # toolhead MCU straight on the template content instead.
+            if not existing_mcu_section:
+                final_content = self._sync_toolhead_mcu(final_content, selected_printer)
+
             # Write the updated content
             with open(dest_path, 'w') as f:
                 f.write(final_content)
@@ -718,7 +732,67 @@ class PrinterConfigManager:
         except Exception as e:
             logger.error(f"Error updating printer.cfg: {e}")
             return False
-    
+
+    # CAN toolhead MCU block, inserted into printer.cfg on machines whose
+    # deployed config predates the Hybrid IDEX variant.
+    TOOLHEAD_MCU_TEMPLATE = (
+        "\n# CAN toolhead - used only by the Hybrid IDEX filament head (T1).\n"
+        "# The Printer Setup UI auto-comments/uncomments this block when you\n"
+        "# switch printer variants. Fill the UUID in once and it is preserved\n"
+        "# across all future printer changes and firmware updates.\n"
+        "#   ~/klippy-env/bin/python ~/klipper/scripts/canbus_query.py can0\n"
+        "#[mcu toolhead0]\n"
+        "#canbus_uuid: XXXXXXXXXXXX\n"
+    )
+
+    def _sync_toolhead_mcu(self, mcu_section: str, selected_printer: str) -> str:
+        """Enable ``[mcu toolhead0]`` for Hybrid IDEX printers, disable it otherwise.
+
+        The filament extruder on the Hybrid IDEX lives on a CAN toolhead board.
+        Klipper errors out on an MCU that no config section references, so the
+        block must be commented for every non-hybrid variant. The operator's
+        ``canbus_uuid`` value is never rewritten, only commented/uncommented,
+        so it survives printer switches and firmware updates.
+
+        Adds the commented block if the section does not have one yet (machines
+        whose deployed printer.cfg predates this variant).
+        """
+        want_uncommented = 'HYBRID' in (selected_printer or '').upper()
+
+        if '[mcu toolhead0]' not in mcu_section:
+            if not want_uncommented:
+                # Nothing to toggle and nothing to enable - leave as-is.
+                return mcu_section
+            mcu_section = mcu_section.rstrip() + '\n' + self.TOOLHEAD_MCU_TEMPLATE
+            logger.info("Inserted [mcu toolhead0] block into MCU config for Hybrid IDEX")
+
+        out_lines: List[str] = []
+        in_block = False
+        for line in mcu_section.split('\n'):
+            bare = line.lstrip().lstrip('#').lstrip()
+            if bare.startswith('[mcu toolhead0]'):
+                in_block = True
+                out_lines.append(bare if want_uncommented else '#' + bare)
+                continue
+            if in_block:
+                # End of block: blank line or the start of another section
+                if bare == '' or (bare.startswith('[') and not bare.startswith('[mcu toolhead0]')):
+                    in_block = False
+                    out_lines.append(line)
+                    continue
+                # Only toggle config directives (``key: value``); leave any
+                # explanatory comments the operator added untouched.
+                if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*:', bare):
+                    out_lines.append(line)
+                    continue
+                out_lines.append(bare if want_uncommented else '#' + bare)
+            else:
+                out_lines.append(line)
+
+        action = 'enabled' if want_uncommented else 'disabled'
+        logger.info(f"CAN toolhead MCU {action} for printer '{selected_printer}'")
+        return '\n'.join(out_lines)
+
     def copy_firmware_files(self, selected_printer: str) -> bool:
         """Copy all firmware files and update printer selection."""
         try:

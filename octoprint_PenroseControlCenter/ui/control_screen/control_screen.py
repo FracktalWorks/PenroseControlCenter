@@ -7,7 +7,7 @@ from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QSpinBox, QTabWidget, QToolButton, QLabel, QVBoxLayout, QHBoxLayout, QFrame, QLabel
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer
+from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer, is_hybrid_printer
 from utils import dialog
 
 try:
@@ -242,7 +242,12 @@ class ControlScreen(QWidget):
         try:
             t0_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
             self.togglePelletSensorT0Button.setChecked(t0_sensor_enabled)
-            t1_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t1_enabled)
+            if is_hybrid_printer():
+                # T1 is a filament extruder: one toggle drives both of its sensors
+                t1_sensor_enabled = bool(self.main_window.printer_model.extruder_runout_enabled) and \
+                    bool(self.main_window.printer_model.extruder_flow_enabled)
+            else:
+                t1_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t1_enabled)
             self.togglePelletSensorT1Button.setChecked(t1_sensor_enabled)
             # Initialize print compatibility check button
             compatibility_enabled = bool(self.main_window.printer_model.print_compatibility_check_enabled)
@@ -718,18 +723,27 @@ class ControlScreen(QWidget):
             # Update model preference (persists)
             self.main_window.printer_model.set_pellet_sensor_t0_pref(enabled, persist=True)
             # Apply immediate state to Klipper
-            self.main_window.controller.apply_pellet_sensor_state()
+            self.main_window.controller.apply_extruder_sensors()
         except Exception as e:
             logger.error(f"Error in ControlScreen.togglePelletSensorT0: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT0: {e}", overlay=True)
 
     def togglePelletSensorT1(self):
-        """Toggle T1 (Right) pellet level sensor persistent preference and apply live state."""
+        """Toggle the T1 (Right) sensors and apply live state.
+
+        On a Hybrid IDEX the right tool is a filament extruder, so this one
+        button drives both its runout and flow sensors. Elsewhere T1 is a
+        second pellet hopper with a level sensor.
+        """
         logger.info("ControlScreen.togglePelletSensorT1 started")
         try:
             enabled = self.togglePelletSensorT1Button.isChecked()
-            self.main_window.printer_model.set_pellet_sensor_t1_pref(enabled, persist=True)
-            self.main_window.controller.apply_pellet_sensor_state()
+            if is_hybrid_printer():
+                self.main_window.printer_model.set_extruder_runout_pref(enabled, persist=True)
+                self.main_window.printer_model.set_extruder_flow_pref(enabled, persist=True)
+            else:
+                self.main_window.printer_model.set_pellet_sensor_t1_pref(enabled, persist=True)
+            self.main_window.controller.apply_extruder_sensors()
         except Exception as e:
             logger.error(f"Error in ControlScreen.togglePelletSensorT1: {e}")
             dialog.WarningOk(self, f"Error in ControlScreen.togglePelletSensorT1: {e}", overlay=True)
