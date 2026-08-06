@@ -240,21 +240,28 @@ jobs are sliced with single-extruder profiles.
   switched mid-print does not re-skin until it actually engages at the next
   job.
 
-**Slicer contract for mode-based printing**: use a single-extruder profile per
-mode with start gcode that:
+**Slicer contract for mode-based printing**: one single-extruder machine
+definition per mode (in Fracktory 5 these are the
+`penrose_600_idex_choosable_pellet` / `..._fdm` pair — the machine dropdown is
+the slicer-side mode selector). Each profile's start gcode must:
 
-1. Declares the mode — `ASSERT_EXTRUDER_MODE MODE=FILAMENT` (or `PELLET`) as
-   the **first line**. If the machine is in the other mode, the print cancels
-   immediately with a clear error instead of printing with the wrong head.
-2. Homes with `G28` (the mode's tool is restored after the home).
-3. Sets temperatures with bare `M104`/`M109 S…` (targets the active = mode
-   tool). Pellet profiles keep their `M104 H0 S…` barrel line and
-   `MIX_HOPPER` layer-change line.
-4. Does **not** emit `M605` or `T0`/`T1`. (`M605 S0/S1` runs `FULL_CONTROL`,
-   which deliberately ends on T0 and would defeat filament mode.)
+1. Declare its mode — `ASSERT_EXTRUDER_MODE MODE=FILAMENT` (or `PELLET`) as
+   the **first command**, before any heating. If the machine is in the other
+   mode, the print cancels immediately with a clear error instead of printing
+   with the wrong head.
+2. Then either **explicitly select the matching tool** (`T1` in the filament
+   profile, `T0` in the pellet profile — the Fracktory choosable profiles do
+   this) or emit no tool command at all and let the mode's tool apply
+   automatically (bare `M104`/`M109 S…` target the active tool; full `G28`
+   restores the mode's tool). Both are supported; never select the *other*
+   tool.
+3. Pellet profiles keep their `M104 H0 S…` barrel line and `MIX_HOPPER`
+   layer-change/interval injection.
+4. Never emit `M605` (`S0/S1` runs `FULL_CONTROL`, which deliberately ends on
+   T0 and would defeat filament mode).
 
-Dual-extruder profiles with explicit tool commands also work — they simply
-override the mode (omit the `ASSERT_EXTRUDER_MODE` line in that case).
+`ASSERT_EXTRUDER_MODE` only exists on the Hybrid IDEX firmware — keep it out
+of profiles that also target the dual-pellet or single machines.
 
 **Input shaping:** no accelerometer is fitted, so `SHAPER_CALIBRATE` cannot be
 run and the UI button stays disabled. The `[input_shaper]` section is present

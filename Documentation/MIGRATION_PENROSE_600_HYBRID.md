@@ -169,24 +169,42 @@ mode) and re-skins live on mode change — no restart needed. Control and
 Filament screens keep both tools so the inactive head can be prepped
 (preheated, loaded) ahead of an on-the-fly mode switch.
 
-**Slicer contract** (single-extruder profiles, one per mode):
+**Slicer setup (Fracktory 5)**: use the existing IDEX Choosable machine pair —
+`penrose_600_idex_choosable_pellet` and `penrose_600_idex_choosable_fdm`. The
+machine dropdown is the slicer-side mode selector; both are single-extruder
+machines with the correct 600×600×625 volume, per-head materials/qualities,
+and explicit `T0`/`T1` selection in their start gcode. One change is required:
 
-- **First start-gcode line**: `ASSERT_EXTRUDER_MODE MODE=PELLET` in the pellet
-  profile, `ASSERT_EXTRUDER_MODE MODE=FILAMENT` in the filament profile. This
-  is the protection that a sliced file can never print with the wrong head:
-  on a mismatch the print cancels immediately with an on-screen error telling
-  the operator to switch the mode and reprint.
-- Then home with `G28`; set temperatures with `M104`/`M109 S…` (no `T`
-  needed — bare `S` targets the active = mode tool). Pellet profiles keep
-  their `M104 H0 S…` barrel line and `MIX_HOPPER` layer-change line.
-- Do **not** emit `M605` or `T0`/`T1` in mode-based profiles — `M605` resets
-  to T0 and would defeat filament mode. (Explicit `T0`/`T1` is allowed when
-  you *intend* to pick the tool from the slicer instead of the UI mode; omit
-  the `ASSERT_EXTRUDER_MODE` line in such profiles.)
+- **Add the mode assert as the first command of each `machine_start_gcode`**
+  (before `M140`):
+  - pellet def: `ASSERT_EXTRUDER_MODE MODE=PELLET`
+  - fdm def: `ASSERT_EXTRUDER_MODE MODE=FILAMENT`
+
+  This is the protection that a wrongly-chosen machine can never print with
+  the wrong head: on a mismatch the print cancels immediately with an
+  on-screen error telling the operator to switch the mode and reprint.
+  Without it, the explicit `T0`/`T1` in the start gcode would silently
+  override the touchscreen mode. The macro only exists on Hybrid IDEX
+  firmware — keep it out of the swappable/dual definitions.
+
+Further contract points (already satisfied by the choosable pair):
+
+- Explicit tool selection must **match** the asserted mode (`T1` with
+  FILAMENT, `T0` with PELLET). Profiles without any `T` command also work —
+  the mode's tool applies automatically.
+- Pellet profile keeps `M104 H0 S…` barrel heating and the MixHopper
+  post-processing injection.
+- Never emit `M605` — it resets to T0 and would defeat filament mode.
 - No wipe tower / ooze shield — only one tool prints per job.
 - Motion tuning per mode is applied by the firmware
   (`_EXTRUDER_MODE_LIMITS`): pellet keeps gentle corners (SCV 4), filament
   runs standard (SCV 5) — no slicer-side changes needed.
+
+Optional polish: align `machine_max_feedrate_x/y` (600) and
+`machine_acceleration` (2500) with the firmware caps (300 / 2000) for honest
+print-time estimates — Klipper clamps them anyway. If renaming the machines
+to "Penrose 600 Hybrid IDEX (…)", change display names only, never the
+definition IDs (saved profiles reference the IDs).
 
 ## 9. Workflow validation — Pellet mode
 
