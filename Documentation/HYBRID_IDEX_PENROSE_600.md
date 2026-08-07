@@ -199,7 +199,7 @@ heater and sensor), `PF6` and `PF8` (T1 pellet part fans).
 | `_APPLY_EXTRUDER_MODE` | Activate the saved mode's tool (homes first if needed) and apply mode motion limits. Run automatically by OctoPrint's `beforePrintStarted` script. |
 | `ASSERT_EXTRUDER_MODE MODE=PELLET/FILAMENT` | Slicer-profile guard — **cancels the print** with an error if the file's declared mode does not match the machine's mode. |
 | `QUERY_EXTRUDER_MODE` | Report the saved mode and the active tool. |
-| `G29` | Always probes with **T0** — the bed probe rides the pellet carriage; the TD-01 filament head has no probe. Switches to T0 first if T1 is active. |
+| `G29` | Always probes with **T0** — the bed probe rides the pellet carriage; the TD-01 filament head has no probe. Pre-heats the nozzle to 150 °C **in pellet mode only** (in filament mode the pellet nozzle stays cold), and hands the carriage back to the mode's tool afterwards. |
 
 Pellet auto-refill additionally requires T0 to be the active tool, so a
 filament-only print can never trip a pellet outage pause or fire the line vac.
