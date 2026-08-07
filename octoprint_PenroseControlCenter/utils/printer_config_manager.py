@@ -588,7 +588,75 @@ class PrinterConfigManager:
     # ========================================================================
     # FILE DEPLOYMENT AND MANAGEMENT
     # ========================================================================
-    
+
+    # Fleet-typical inductive probe trigger offset, used only to SEED a
+    # machine whose SAVE_CONFIG block has no [probe] z_offset entry (e.g.
+    # its previous config had no [probe] section at all). Without the
+    # entry Klipper refuses to start: "Option 'z_offset' in section
+    # 'probe' must be specified". The seed makes the machine bootable;
+    # the Z Probe Offset wizard overwrites it with the calibrated value.
+    #
+    # Deliberately NOT shipped in the BASE_*.cfg [probe] sections: a value
+    # in an included file silently overrides the SAVE_CONFIG calibration
+    # at startup (Klipper strips autosave duplicates in favour of the
+    # regular config) and makes the wizard's SAVE_CONFIG fail with
+    # "conflicts with included value".
+    PROBE_Z_OFFSET_SEED = "-0.575"
+    SAVE_CONFIG_MARKER = "#*# <---------------------- SAVE_CONFIG ---------------------->"
+    SAVE_CONFIG_HEADER = (
+        "#*# <---------------------- SAVE_CONFIG ---------------------->\n"
+        "#*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.\n"
+        "#*#"
+    )
+
+    def _seed_probe_z_offset(self, content: str) -> str:
+        """Ensure the SAVE_CONFIG block contains a [probe] z_offset entry.
+
+        Handles three machine states:
+        - SAVE_CONFIG block present with [probe] z_offset -> unchanged
+        - SAVE_CONFIG block present without it -> entry inserted after the header
+        - no SAVE_CONFIG block at all -> a minimal block is appended
+        """
+        try:
+            marker_pos = content.find(self.SAVE_CONFIG_MARKER)
+            if marker_pos == -1:
+                # No SAVE_CONFIG block at all (e.g. preserved MCU section
+                # truncated the template tail) - append a minimal one
+                content = (content.rstrip('\n') + "\n\n" + self.SAVE_CONFIG_HEADER +
+                           "\n#*# [probe]\n#*# z_offset = " + self.PROBE_Z_OFFSET_SEED + "\n")
+                logger.info("Seeded new SAVE_CONFIG block with [probe] z_offset")
+                return content
+
+            # Scan the existing block for a [probe] section with z_offset
+            tail = content[marker_pos:]
+            in_probe = False
+            has_z_offset = False
+            for line in tail.split('\n'):
+                stripped = line.replace('#*#', '', 1).strip()
+                if stripped.startswith('['):
+                    in_probe = (stripped == '[probe]')
+                elif in_probe and stripped.startswith('z_offset'):
+                    has_z_offset = True
+                    break
+            if has_z_offset:
+                return content
+
+            # Insert right after the block header (marker line, the
+            # "DO NOT EDIT" line if present, and any bare '#*#' spacer)
+            lines = tail.split('\n')
+            insert_at = 1
+            if insert_at < len(lines) and 'DO NOT EDIT' in lines[insert_at]:
+                insert_at += 1
+            if insert_at < len(lines) and lines[insert_at].strip() == '#*#':
+                insert_at += 1
+            seed_lines = ['#*# [probe]', '#*# z_offset = ' + self.PROBE_Z_OFFSET_SEED, '#*#']
+            lines[insert_at:insert_at] = seed_lines
+            logger.info("Seeded [probe] z_offset into existing SAVE_CONFIG block")
+            return content[:marker_pos] + '\n'.join(lines)
+        except Exception as e:
+            logger.error(f"Error seeding probe z_offset: {e}")
+            return content
+
     def update_printer_cfg(self, source_path: str, dest_path: str, selected_printer: str, preserve_mcu: bool = True) -> bool:
         """Update printer.cfg with new printer selection while preserving MCU config and SAVE_CONFIG sections."""
         try:
@@ -743,6 +811,10 @@ class PrinterConfigManager:
             # toolhead MCU straight on the template content instead.
             if not existing_mcu_section:
                 final_content = self._sync_toolhead_mcu(final_content, selected_printer)
+
+            # Klipper refuses to start without [probe] z_offset; make sure
+            # the SAVE_CONFIG block provides one (no-op when already there)
+            final_content = self._seed_probe_z_offset(final_content)
 
             # Write the updated content
             with open(dest_path, 'w') as f:

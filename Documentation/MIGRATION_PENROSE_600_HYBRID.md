@@ -279,9 +279,18 @@ whose previous config had no `[probe]` section (e.g. it ran the single-nozzle
 filament test config) has a preserved SAVE_CONFIG block **without** a probe
 entry, so the option is missing.
 
-**Fix (one-time)**: edit `/home/pi/printer.cfg` and add the probe entry
-*inside* the SAVE_CONFIG block at the bottom, right after the header lines
-(every line must keep the `#*#` prefix):
+**Automatic fix (plugin v16+)**: every printer.cfg deployment (SKU selection
+or the in-app firmware update) now seeds `#*# z_offset = -0.575` into the
+SAVE_CONFIG block whenever it is missing — including creating the block if
+the machine has none at all. An existing calibrated value is never touched.
+So: update the plugin, take the firmware-update prompt (or re-select the
+SKU), reboot, done. Calibrate the real value afterwards (Calibrate → Z Probe
+Offset wizard), which overwrites the seed via SAVE_CONFIG.
+
+**Manual fix** (only if you need Klipper up before running the update flow):
+edit `/home/pi/printer.cfg` and add the probe entry *inside* the SAVE_CONFIG
+block at the bottom, right after the header lines (every line must keep the
+`#*#` prefix):
 
 ```
 #*# <---------------------- SAVE_CONFIG ---------------------->
@@ -291,11 +300,13 @@ entry, so the option is missing.
 #*# z_offset = -0.575
 ```
 
-Then `FIRMWARE_RESTART`. `-0.575` is a fleet-typical seed — calibrate the
-real value afterwards (Calibrate → Z Probe Offset wizard), which overwrites
-this entry via SAVE_CONFIG. Do **not** instead uncomment `z_offset` in
-`BASE_PENROSE_HYBRID.cfg`: once SAVE_CONFIG also holds it, Klipper errors
-with a conflict, and firmware updates would overwrite the file anyway.
+Then `FIRMWARE_RESTART`.
+
+Do **not** instead uncomment `z_offset` in `BASE_PENROSE_HYBRID.cfg`. Two
+Klipper behaviours make that wrong: at startup a value in the regular config
+silently **overrides the SAVE_CONFIG calibration** (autosave duplicates are
+stripped in favour of the regular config), and the calibration wizard's
+`SAVE_CONFIG` then fails with "conflicts with included value".
 
 ### "Heater heater_bed not heating at expected rate"
 
