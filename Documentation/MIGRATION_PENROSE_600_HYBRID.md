@@ -267,7 +267,66 @@ Set mode = **Filament Extruder (T1)**, then verify:
       reports FILAMENT (persisted in `variables.cfg`); the Printer Setup
       dropdown shows it after the screen opens.
 
-## 12. Rollback
+## 12. First-boot troubleshooting
+
+Errors seen on real machines during commissioning, with fixes.
+
+### "Option 'z_offset' in section 'probe' must be specified"
+
+Klipper refuses to start. The `[probe]` section deliberately ships without
+`z_offset` — the value lives in the machine's `SAVE_CONFIG` tail. A machine
+whose previous config had no `[probe]` section (e.g. it ran the single-nozzle
+filament test config) has a preserved SAVE_CONFIG block **without** a probe
+entry, so the option is missing.
+
+**Fix (one-time)**: edit `/home/pi/printer.cfg` and add the probe entry
+*inside* the SAVE_CONFIG block at the bottom, right after the header lines
+(every line must keep the `#*#` prefix):
+
+```
+#*# <---------------------- SAVE_CONFIG ---------------------->
+#*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.
+#*#
+#*# [probe]
+#*# z_offset = -0.575
+```
+
+Then `FIRMWARE_RESTART`. `-0.575` is a fleet-typical seed — calibrate the
+real value afterwards (Calibrate → Z Probe Offset wizard), which overwrites
+this entry via SAVE_CONFIG. Do **not** instead uncomment `z_offset` in
+`BASE_PENROSE_HYBRID.cfg`: once SAVE_CONFIG also holds it, Klipper errors
+with a conflict, and firmware updates would overwrite the file anyway.
+
+### "Heater heater_bed not heating at expected rate"
+
+The 600×600 bed gains temperature slowly near its target and Klipper's stock
+check (2 °C per 60 s) can false-trigger mid-approach. Firmware v14 adds a
+relaxed `[verify_heater heater_bed]` to `BASE_PENROSE_HYBRID.cfg` — update
+the firmware configs (or re-select the SKU) to get it. If the fault persists
+with v14, treat it as real: check the bed SSR wiring and thermistor seating.
+
+### "MCU 'mcu' shutdown: Timer too close"
+
+Host/CAN timing, not a config-parse problem. Work through
+`Documentation/LINUX_OPTIMIZATION_KLIPPER.md` (CPU governor → performance,
+swap, service priorities — all steps). Hybrid-specific checks on top:
+
+1. `ip -details link show can0` — bitrate 1000000 and `txqueuelen 128`
+   actually applied.
+2. CAN wiring: 120 Ω termination at **both** ends of the bus, short stubs.
+3. `dmesg | grep -i can` — bus-off or error-frame storms point at wiring.
+4. Note **when** it fires (homing / G29 probing / mid-print) and pull
+   `/tmp/klippy.log` immediately after — the lines before the shutdown name
+   the overloaded MCU and timer.
+
+### "Internal error on command: G1"
+
+Usually a cascade: it appears when gcode keeps streaming after one of the
+shutdowns above, or carries a Python traceback of its own. The traceback
+directly above this line in `/tmp/klippy.log` is the actual diagnosis —
+capture the log before restarting Klipper (`cp /tmp/klippy.log ~/klippy_fail.log`).
+
+## 13. Rollback
 
 - **Configs**: Settings → Printer Setup → "Penrose 600 Dual" → Set. The MCU
   block (both UUIDs) and the SAVE_CONFIG tail are preserved; `[mcu E1]` is
