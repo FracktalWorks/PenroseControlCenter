@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import os
+import re
 import requests
 import json
 import base64
@@ -346,6 +347,108 @@ class octoprintAPI:
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # +++++++++++++++++++++++++ Job Handling +++++++++++++++++++++++++++++++++++++++
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    # Signals the Hybrid IDEX slicer contract puts in a sliced file. The
+    # ASSERT is authoritative (it is the documented contract and the
+    # firmware acts on it); the rest are pellet-only macros used as a
+    # fallback for files sliced before the assert was added to profiles.
+    _MODE_ASSERT_RE = re.compile(r'ASSERT_EXTRUDER_MODE\s+MODE\s*=\s*(PELLET|FILAMENT)', re.IGNORECASE)
+    _PELLET_ONLY_RE = re.compile(r'^\s*(?:M10[49]\s+H0\b|MIX_HOPPER\b|PELLET_PREPRINT_CHECK\b)',
+                                 re.IGNORECASE | re.MULTILINE)
+
+    def getGcodeExtruderMode(self, name, scan_bytes=262144):
+        """Detect which Hybrid IDEX extruder mode a GCODE file was sliced for.
+
+        Only the head of the file is fetched - start gcode (and any
+        ASSERT_EXTRUDER_MODE) lives there, and print files can be
+        hundreds of MB.
+
+        Args:
+            name: GCODE filename as known to OctoPrint
+            scan_bytes: How many bytes of the file head to scan
+
+        Returns:
+            'pellet', 'filament', or None when the file carries no mode
+            signal at all (in which case the caller must not block the
+            print - plenty of valid files predate the contract).
+        """
+        logger.debug(f"Detecting extruder mode from GCODE: {name}")
+        encoded_name = quote(name, safe='')
+        url = 'http://' + self.ip + '/downloads/files/local/' + encoded_name
+        headers = {'X-Api-Key': self.apiKey}
+
+        try:
+            with requests.get(url, headers=headers, stream=True, timeout=30) as response:
+                if response.status_code != 200:
+                    logger.warning(f"Could not download {name} for mode detection: {response.status_code}")
+                    return None
+                chunks = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=32768):
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total >= scan_bytes:
+                        break
+            head = b''.join(chunks).decode('utf-8', errors='ignore')
+
+            match = self._MODE_ASSERT_RE.search(head)
+            if match:
+                mode = match.group(1).lower()
+                logger.info(f"GCODE '{name}' declares extruder mode: {mode}")
+                return mode
+
+            # No explicit declaration - fall back to pellet-only macros.
+            # There is deliberately no filament-side heuristic: a bare
+            # M104/M109 looks identical in both modes, so guessing
+            # 'filament' from the absence of pellet markers would flag
+            # every legacy pellet file that predates the contract.
+            if self._PELLET_ONLY_RE.search(head):
+                logger.info(f"GCODE '{name}' inferred as pellet (pellet-only macros present)")
+                return 'pellet'
+
+            logger.info(f"GCODE '{name}' carries no extruder mode signal")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error detecting extruder mode for {name}: {e}")
+            return None
+
+    def updateTemperatureProfiles(self, profiles):
+        """Replace OctoPrint's temperature presets (live, no restart).
+
+        POST /api/settings applies immediately to the running instance and
+        persists to config.yaml, so the web UI picks the new presets up on
+        its next refresh without an OctoPrint restart.
+
+        Args:
+            profiles: List of dicts with name/extruder/bed/chamber keys
+        """
+        url = 'http://' + self.ip + '/api/settings'
+        payload = {'temperature': {'profiles': profiles}}
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=15)
+        response.raise_for_status()
+        logger.info(f"Updated OctoPrint temperature presets ({len(profiles)} entries)")
+
+    def updatePrinterProfileName(self, name, identifier='_default'):
+        """Rename an OctoPrint printer profile (live, no restart).
+
+        Used to surface the active Hybrid IDEX extruder mode in the web UI.
+        Deliberately touches only the name - the extruder count must stay
+        at 2 so OctoPrint's tool0/tool1 keep mapping onto M104 T0/T1.
+
+        Args:
+            name: New display name for the profile
+            identifier: Profile id (OctoPrint's default profile is '_default')
+        """
+        url = 'http://' + self.ip + '/api/printerprofiles/' + quote(identifier, safe='')
+        payload = {'profile': {'name': name}}
+        headers = {'content-type': 'application/json', 'X-Api-Key': self.apiKey}
+        response = requests.patch(url, data=json.dumps(payload), headers=headers, timeout=15)
+        response.raise_for_status()
+        logger.info(f"Updated OctoPrint printer profile name to '{name}'")
 
     def getJobInformation(self):
         """

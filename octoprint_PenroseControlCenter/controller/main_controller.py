@@ -26,7 +26,8 @@ from utils.helpers import run_async
 from utils import dialog
 from ui.loading_screen.loading_screen import LoadingScreen
 from config import ip, apiKey, CRITICAL_PRINTER_ERRORS, IGNORED_PRINTER_ERRORS
-from utils.printer_ui_config import is_dual_nozzle_printer, is_hybrid_printer
+from utils.printer_ui_config import (is_dual_nozzle_printer, is_hybrid_printer,
+                                     get_extruder_mode)
 
 
 logger = get_logger(__name__)
@@ -663,14 +664,26 @@ class MainController(QtCore.QObject):
             self.logger.error(f"Failed applying filament sensor state: {e}")
 
     def apply_extruder_sensors(self):
-        """Apply every extruder sensor this machine has, per preferences.
+        """Apply the sensors that exist in the active configuration.
 
-        On the Hybrid IDEX both heads are present at once: the T0 pellet level
-        sensor and the T1 filament runout switch both apply.
+        Since the config-swap model only ONE head is configured at a time,
+        so only that head's sensor exists in Klipper:
+
+            pellet mode   -> pellet_sensor_left (hopper level)
+            filament mode -> switch_sensor_E1   (filament runout)
+
+        Sending SET_FILAMENT_SENSOR for the other mode's sensor would just
+        produce an "Unknown sensor" error on every print start, so gate on
+        the mode rather than applying both.
         """
-        self.apply_pellet_sensor_state()
         if is_hybrid_printer():
-            self.apply_filament_sensor_state()
+            if get_extruder_mode() == 'filament':
+                self.apply_filament_sensor_state()
+            else:
+                self.apply_pellet_sensor_state()
+            return
+        # Non-hybrid machines are pellet-only
+        self.apply_pellet_sensor_state()
 
     def disable_extruder_sensors(self):
         """Disable every extruder sensor - used on pause/cancel/print completion.
@@ -681,11 +694,17 @@ class MainController(QtCore.QObject):
         if not self.octoprint_client:
             return
         try:
-            self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
-            if is_dual_nozzle_printer() and not is_hybrid_printer():
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
+            # Only the active mode's sensor exists in Klipper on a hybrid -
+            # disabling the other one would just log "Unknown sensor".
             if is_hybrid_printer():
-                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=switch_sensor_E1 ENABLE=0')
+                if get_extruder_mode() == 'filament':
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=switch_sensor_E1 ENABLE=0')
+                else:
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+            else:
+                self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_left ENABLE=0')
+                if is_dual_nozzle_printer():
+                    self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=pellet_sensor_right ENABLE=0')
             self.logger.info("Disabled extruder sensors")
         except Exception as e:
             self.logger.error(f"Failed disabling extruder sensors: {e}")
@@ -718,6 +737,72 @@ class MainController(QtCore.QObject):
             apply_extruder_mode_to_all_screens(self.main_window)
         except Exception as e:
             self.logger.error(f"Error applying extruder mode to screens: {e}")
+        # Keep the OctoPrint web interface in step with the touchscreen
+        self.apply_extruder_mode_to_octoprint(mode)
+
+    def apply_extruder_mode_to_octoprint(self, mode):
+        """Reconfigure the OctoPrint web interface for the active extruder mode.
+
+        So that operating the machine from the web UI has the same effect as
+        the touchscreen. Three things follow the mode, all applied live over
+        the REST API (no OctoPrint restart):
+
+        1. **Temperature presets** - only the printing head's presets are
+           offered. This is the safety-relevant one: the merged list used to
+           offer 300 C pellet presets while a filament hotend (310 C max,
+           and PLA in it) was the printing head.
+        2. **Printer profile name** - suffixed "(Pellet)"/"(Filament)" so a
+           remote operator can see which head will print.
+        3. **Selected tool** - OctoPrint's active tool is pointed at the
+           mode's tool, so its temperature widgets and any manual extrude
+           target the head that is actually loaded.
+
+        Deliberately NOT changed: the profile's extruder count stays 2.
+        OctoPrint maps tool0/tool1 directly onto M104 T0/T1, so a
+        1-extruder profile would leave the web UI's single Tool control
+        emitting T0 - heating the pellet nozzle in filament mode, with no
+        visible readout. See update_octoprint_printer_profile.
+
+        Prints started from the web UI are already mode-correct: the machine
+        only HAS one extruder in a given mode, so there is no wrong tool to
+        pick. validate_gcode_extruder_mode still hooks the PrintStarted
+        event to catch a file sliced for the other mode entirely.
+        """
+        if not is_hybrid_printer() or not self.octoprint_client:
+            return
+        try:
+            from utils.printer_config_manager import (
+                get_printer_config_manager,
+                get_current_printer_selection,
+                get_printer_display_name,
+            )
+            manager = get_printer_config_manager()
+
+            try:
+                profiles = manager.get_temperature_profiles_for_mode(mode)
+                if profiles:
+                    self.octoprint_client.updateTemperatureProfiles(profiles)
+            except Exception as e:
+                self.logger.warning(f"Could not update OctoPrint temperature presets: {e}")
+
+            try:
+                current_printer = get_current_printer_selection()
+                if current_printer:
+                    base_name = get_printer_display_name(current_printer)
+                    self.octoprint_client.updatePrinterProfileName(
+                        manager.get_mode_profile_name(base_name, mode)
+                    )
+            except Exception as e:
+                self.logger.warning(f"Could not update OctoPrint profile name: {e}")
+
+            try:
+                self.octoprint_client.selectTool(1 if mode == 'filament' else 0)
+            except Exception as e:
+                self.logger.warning(f"Could not sync OctoPrint selected tool: {e}")
+
+            self.logger.info(f"OctoPrint web interface reconfigured for '{mode}' mode")
+        except Exception as e:
+            self.logger.error(f"Error applying extruder mode to OctoPrint: {e}")
 
     def onFilamentRunout(self, tool):
         """Handle a filament runout on the Hybrid IDEX T1 head."""
@@ -762,6 +847,54 @@ class MainController(QtCore.QObject):
     # =========================================================================
     # SECTION: Print Lifecycle Events
     # =========================================================================
+
+    def validate_gcode_extruder_mode(self, filename):
+        """Check a GCODE file was sliced for the machine's current extruder mode.
+
+        Hybrid IDEX only. Printing a pellet file with the filament head (or
+        the reverse) is the one mismatch that must never be waved through:
+        the heads have different temperature ranges, flow rates and nozzle
+        sizes, and the wrong one is loaded with the wrong material.
+
+        This runs off OctoPrint's PrintStarted event, so it covers prints
+        started from the touchscreen, the OctoPrint web UI, the API or a
+        restored print alike - anywhere ASSERT_EXTRUDER_MODE in the sliced
+        start gcode might not be present.
+
+        Returns:
+            (ok, message) - ok False only when the file's declared mode is
+            known AND differs from the machine's. Files with no mode signal
+            pass (they predate the slicer contract).
+        """
+        if not is_hybrid_printer() or not self.octoprint_client or not filename:
+            return True, None
+        try:
+            file_mode = self.octoprint_client.getGcodeExtruderMode(filename)
+            if not file_mode:
+                self.logger.info(f"No extruder mode declared in {filename} - skipping mode check")
+                return True, None
+
+            machine_mode = getattr(self.printer_model, 'extruder_mode', 'pellet')
+            if file_mode == machine_mode:
+                self.logger.info(f"Extruder mode check OK: file and machine are both {file_mode}")
+                return True, None
+
+            names = {'pellet': 'Pellet Extruder', 'filament': 'Filament Extruder'}
+            message = (
+                "Wrong extruder for this file!\n\n"
+                f"This file is sliced for the {names.get(file_mode, file_mode)}, "
+                f"but the printer is set to the {names.get(machine_mode, machine_mode)}.\n\n"
+                "The print has been cancelled to protect the machine.\n\n"
+                f"Change the Extruder Type to {names.get(file_mode, file_mode)} on the "
+                "Material/Nozzle screen, then start the print again."
+            )
+            self.logger.error(
+                f"Extruder mode mismatch on {filename}: file={file_mode}, machine={machine_mode}"
+            )
+            return False, message
+        except Exception as e:
+            self.logger.error(f"Error validating extruder mode: {e}")
+            return True, None  # Never block a print on a checker failure
 
     def validate_gcode_compatibility(self, filename):
         """
@@ -1076,14 +1209,32 @@ class MainController(QtCore.QObject):
         try:
             self.logger.info("MainController.onPrintStarted invoked")
             
+            # Extract filename from the event structure. According to OctoPrint
+            # docs, PrintStarted is: {'type': 'PrintStarted', 'payload': {...}}
+            filename = None
+            if isinstance(event, dict) and 'payload' in event:
+                filename = event['payload'].get('name')
+
+            # Hybrid IDEX extruder mode guard. Runs BEFORE (and independently
+            # of) the nozzle/material compatibility check, and is NOT gated on
+            # the compatibility-check preference: printing a pellet file with
+            # the filament head - or the reverse - is a hardware-damage class
+            # mistake, not a tolerance the operator can opt out of. Unlike the
+            # other mismatches there is no "continue anyway"; this matches the
+            # firmware's own ASSERT_EXTRUDER_MODE, which cancels outright.
+            if filename:
+                mode_ok, mode_message = self.validate_gcode_extruder_mode(filename)
+                if not mode_ok:
+                    if self.octoprint_client:
+                        try:
+                            self.octoprint_client.cancelPrint()
+                        except Exception as e:
+                            self.logger.error(f"Error cancelling print on mode mismatch: {e}")
+                    dialog.WarningOk(self.main_window, mode_message, overlay=True)
+                    return
+
             # Check GCODE compatibility if enabled and we have file information
-            # According to OctoPrint docs, PrintStarted event structure is: {'type': 'PrintStarted', 'payload': {...}}
             if (self.printer_model.print_compatibility_check_enabled and event):
-                # Extract filename from the correct event structure
-                filename = None
-                if isinstance(event, dict) and 'payload' in event:
-                    filename = event['payload'].get('name')
-                
                 if filename:
                     self.logger.info(f"Validating GCODE compatibility for file: {filename}")
                     is_compatible, mismatches = self.validate_gcode_compatibility(filename)

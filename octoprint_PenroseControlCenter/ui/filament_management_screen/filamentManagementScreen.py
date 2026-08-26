@@ -7,7 +7,7 @@ from PyQt5 import uic
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
 from utils.printer_ui_config import (apply_nozzle_config_to_screen, is_dual_nozzle_printer,
-                                     is_hybrid_printer, is_filament_tool)
+                                     is_hybrid_printer, is_filament_tool, get_extruder_mode)
 from utils import dialog
 from utils import styles
 import config
@@ -18,6 +18,13 @@ from ui.filament_management_screen.nozzleChangeWizard.nozzleChangeWizard import 
 from ui.filament_management_screen.changeFilamentWizard.changeFilamentWizard import ChangeFilamentWizard
 
 logger = get_logger(__name__)
+
+# Hybrid IDEX extruder types shown in the customer-facing selector on this
+# screen. The data value is the MODE= argument for SET_EXTRUDER_MODE.
+EXTRUDER_TYPES = [
+    ("Pellet Extruder", "pellet"),
+    ("Filament Extruder", "filament"),
+]
 
 class filamentManagementScreen(QWidget):
     def __init__(self, main_window):
@@ -106,6 +113,10 @@ class filamentManagementScreen(QWidget):
 
         self.materialNozzleBackButton.clicked.connect(lambda: self.main_window.switch_to_menu_screen())
 
+        # Hybrid IDEX: customer-facing extruder type selector (Pellet/Filament)
+        self.extruderTypeComboBox = None
+        self._setup_extruder_type_selector()
+
         # Show the main material/nozzle page initially
         self.material_nozzle_stacked_widget.setCurrentWidget(self.main_material_nozzle_page)
         self.logger.debug("Set current widget to mainMaterialNozzlePage")
@@ -145,6 +156,8 @@ class filamentManagementScreen(QWidget):
 
         Printing/Paused: disable only nozzle change; keep material change enabled.
         Offline: disable both types. Operational: enable all.
+        The extruder type selector is idle-only: switching moves carriages
+        and cools the deactivated head, so it locks during a print too.
         """
         nozzle_disabled = status in ("Printing", "Paused", "Offline")
         material_disabled = status == "Offline"
@@ -153,6 +166,249 @@ class filamentManagementScreen(QWidget):
         self.changeTool1Button.setDisabled(nozzle_disabled)
         self.changeTool0MaterialBayA.setDisabled(material_disabled)
         self.changeTool1MaterialBayX.setDisabled(material_disabled)
+        if self.extruderTypeComboBox is not None:
+            self.extruderTypeComboBox.setDisabled(status in ("Printing", "Paused", "Offline"))
+
+    # --- Hybrid IDEX: extruder type selector (Pellet / Filament) ---
+    def _setup_extruder_type_selector(self):
+        """Add the always-visible extruder type selector to the header.
+
+        Hybrid IDEX only. The machine presents as a single-extruder
+        printer - this dropdown is how the customer switches it between
+        "single pellet printer" and "single filament printer". Switching
+        is a runtime action (SET_EXTRUDER_MODE): no firmware copy, no
+        Klipper restart, no reboot - the firmware cools the deactivated
+        head, swaps carriages and the UI re-skins live.
+        """
+        if not is_hybrid_printer():
+            return
+        try:
+            header_layout = self.findChild(QHBoxLayout, "horizontalLayout_4")
+            if header_layout is None:
+                self.logger.error("Header layout not found - extruder type selector not added")
+                return
+
+            combo = QComboBox(self)
+            combo.setObjectName("extruderTypeComboBox")
+            combo.setFont(dialog.font(size=14))
+            combo.setMinimumSize(QtCore.QSize(280, 50))
+            combo.setStyleSheet(
+                """
+                QComboBox#extruderTypeComboBox {
+                    background-color: #ffffff; color: #000000;
+                    border: 1px solid #c7c7c7; border-radius: 12px;
+                    padding: 4px 12px; padding-right: 36px;
+                }
+                QComboBox#extruderTypeComboBox::drop-down {
+                    background-color: #f0f0f0; border-left: 1px solid #c7c7c7; width: 32px;
+                    border-top-right-radius: 12px; border-bottom-right-radius: 12px;
+                }
+                QComboBox#extruderTypeComboBox::down-arrow {
+                    image: url(:/Navigation/img/Navigation/arrows-5.png);
+                    width: 14px; height: 14px;
+                }
+                QComboBox#extruderTypeComboBox QAbstractItemView {
+                    background-color: #ffffff; color: #000000;
+                    selection-background-color: #0078D7; selection-color: #ffffff;
+                }
+                QComboBox#extruderTypeComboBox:disabled {
+                    background-color: #d9d9d9; color: #777777;
+                }
+                """
+            )
+            for display_name, mode in EXTRUDER_TYPES:
+                combo.addItem(display_name, mode)
+            # 'activated' fires only on user interaction, so programmatic
+            # refreshes never trigger a mode change
+            combo.activated.connect(self._on_extruder_type_selected)
+            # Between the title label (stretch 4) and the back button (stretch 1)
+            header_layout.insertWidget(1, combo, 2)
+            self.extruderTypeComboBox = combo
+
+            # Single-extruder presentation: name the bays by head type,
+            # not by tool number
+            if self.findChild(QLabel, "calibrateLabel_6"):
+                self.findChild(QLabel, "calibrateLabel_6").setText("Pellet Extruder")
+            if self.findChild(QLabel, "calibrateLabel_7"):
+                self.findChild(QLabel, "calibrateLabel_7").setText("Filament Extruder")
+
+            self._refresh_extruder_type_selection()
+            self.logger.info("Extruder type selector added to material/nozzle screen")
+        except Exception as e:
+            self.logger.error(f"Error setting up extruder type selector: {e}")
+
+    def _refresh_extruder_type_selection(self, mode=None):
+        """Point the selector at the active extruder mode without firing signals."""
+        if self.extruderTypeComboBox is None:
+            return
+        try:
+            if mode is None:
+                model = getattr(self.main_window, 'printer_model', None)
+                mode = getattr(model, 'extruder_mode', None) or get_extruder_mode()
+            for i in range(self.extruderTypeComboBox.count()):
+                if self.extruderTypeComboBox.itemData(i) == mode:
+                    if self.extruderTypeComboBox.currentIndex() != i:
+                        self.extruderTypeComboBox.blockSignals(True)
+                        self.extruderTypeComboBox.setCurrentIndex(i)
+                        self.extruderTypeComboBox.blockSignals(False)
+                    break
+        except Exception as e:
+            self.logger.error(f"Error refreshing extruder type selection: {e}")
+
+    def _on_extruder_type_selected(self, index):
+        """Handle a customer selection in the extruder type dropdown."""
+        try:
+            selected_mode = self.extruderTypeComboBox.itemData(index)
+            selected_display = self.extruderTypeComboBox.itemText(index)
+            model = self.main_window.printer_model
+            current_mode = getattr(model, 'extruder_mode', 'pellet')
+
+            if selected_mode == current_mode:
+                return
+
+            # Idle-only. The firmware refuses a busy switch too - this
+            # guard just gives a friendlier message before anything is sent.
+            status = getattr(model, 'printer_status', None)
+            if status in ("Printing", "Paused"):
+                dialog.WarningOk(
+                    self,
+                    "The extruder type cannot be changed while a print is "
+                    "running or paused.\n\nFinish or cancel the print first.",
+                    overlay=True
+                )
+                self._refresh_extruder_type_selection(current_mode)
+                return
+            if status == "Offline":
+                dialog.WarningOk(self, "Printer is offline - cannot switch extruder type.", overlay=True)
+                self._refresh_extruder_type_selection(current_mode)
+                return
+
+            other = "Filament" if selected_mode == "pellet" else "Pellet"
+            if not dialog.WarningYesNo(
+                self,
+                f"Switch the printer to {selected_display} mode?\n\n"
+                f"The {other} extruder will be parked and its heaters turned "
+                "off. The printer will home first, then reconfigure and "
+                "restart.\n\n"
+                "Make sure the bed is clear. This takes about a minute.",
+                overlay=True
+            ):
+                self._refresh_extruder_type_selection(current_mode)
+                return
+
+            self._perform_extruder_mode_switch(selected_mode, selected_display, current_mode)
+        except Exception as e:
+            self.logger.error(f"Error switching extruder type: {e}")
+            dialog.WarningOk(self, f"Error switching extruder type: {e}", overlay=True)
+
+    def _perform_extruder_mode_switch(self, mode, display_name, previous_mode):
+        """Swap the Klipper config to the requested extruder mode and restart.
+
+        Ordered so the machine is never left in a state where the parked
+        carriage could be hit:
+
+          1. PREPARE_EXTRUDER_MODE_SWITCH - refuses if busy, homes so BOTH
+             carriages sit on their own endstops, kills the heaters and
+             flushes live calibration into the SAVE_CONFIG block.
+          2. set_extruder_mode() - files the outgoing mode's calibration
+             away, flips the MODE_*.cfg include, restores the incoming
+             mode's calibration and toggles [mcu E1].
+          3. restore_octoprint_configs() - regenerates the printer profile
+             and the per-mode gcode scripts (the cooldown script differs:
+             pellet has an H0 barrel heater to switch off, filament does not).
+          4. FIRMWARE_RESTART - Klipper comes back as the other machine.
+
+        Step 1 is gcode and therefore asynchronous; the wait below gives it
+        time to finish homing before the config is rewritten underneath it.
+        """
+        from utils.printer_config_manager import (
+            get_printer_config_manager, get_current_printer_selection,
+            restore_octoprint_configs,
+        )
+        progress = None
+        try:
+            self.extruderTypeComboBox.setDisabled(True)
+            progress = dialog.dialog(
+                self,
+                f"Switching to {display_name}...\n\n"
+                "Homing and parking, then reconfiguring.\n"
+                "Please do not power off the printer.",
+                buttons=QtWidgets.QMessageBox.NoButton,
+                overlay=True,
+                format_text=False,
+            )
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents)
+
+            # 1. Safe state. Blocking-ish: the gcode queue drains through
+            #    M400 inside the macro, and we give it a generous window.
+            self.octoprint_client.gcode(command='PREPARE_EXTRUDER_MODE_SWITCH')
+            self._wait_ms(45000, "homing and parking")
+
+            # 2. Swap the config
+            manager = get_printer_config_manager()
+            if not manager.set_extruder_mode(mode):
+                raise RuntimeError("failed to rewrite printer.cfg")
+
+            # 3. Regenerate OctoPrint's profile + per-mode gcode scripts
+            current_printer = get_current_printer_selection()
+            if current_printer:
+                restore_octoprint_configs(current_printer)
+
+            # 4. Restart Klipper into the new configuration
+            controller = getattr(self.main_window, 'controller', None)
+            if controller is not None:
+                # Suppress the transient MCU-reset errors a restart emits
+                controller._klipper_restart_in_progress = True
+            self.octoprint_client.gcode(command='FIRMWARE_RESTART')
+            self._wait_ms(15000, "restarting Klipper")
+
+            # Refresh the plugin's cached view of the machine
+            self.main_window.printer_model.reload_printer_configuration()
+            self.main_window.printer_model.update_extruder_mode(mode)
+
+            if progress:
+                progress.hide()
+                progress.deleteLater()
+                progress = None
+            dialog.WarningOk(
+                self,
+                f"Now configured as a {display_name} printer.\n\n"
+                "Home the machine before printing.",
+                overlay=True,
+            )
+        except Exception as e:
+            self.logger.exception(f"Extruder mode switch failed: {e}")
+            if progress:
+                progress.hide()
+                progress.deleteLater()
+                progress = None
+            dialog.WarningOk(
+                self,
+                f"Could not switch extruder type:\n\n{e}\n\n"
+                "The printer has been left in its previous configuration.",
+                overlay=True,
+            )
+            self._refresh_extruder_type_selection(previous_mode)
+        finally:
+            if progress:
+                progress.hide()
+                progress.deleteLater()
+            self.extruderTypeComboBox.setDisabled(False)
+
+    def _wait_ms(self, milliseconds, what):
+        """Keep the UI responsive while waiting for a slow printer action."""
+        self.logger.info(f"Waiting up to {milliseconds}ms: {what}")
+        loop = QtCore.QEventLoop()
+        QtCore.QTimer.singleShot(milliseconds, loop.quit)
+        loop.exec_()
+
+    def on_extruder_mode_applied(self, mode):
+        """Keep the selector in sync when the mode is applied/re-applied.
+
+        Called by apply_extruder_mode_to_all_screens; the bay frames are
+        already shown/hidden by the mode visibility pass.
+        """
+        self._refresh_extruder_type_selection(mode)
 
     def showEvent(self, event):
         """Reset to main_material_nozzle_page whenever this widget is shown from main window navigation."""
@@ -162,6 +418,11 @@ class filamentManagementScreen(QWidget):
             self.logger.debug("Reset stacked widget to main_material_nozzle_page on show")
             # Poll pellet sensors when screen is shown
             self._poll_pellet_sensors()
+            # Re-query the extruder mode so the selector reflects
+            # variables.cfg even if the mode was changed outside the UI
+            if is_hybrid_printer() and self.extruderTypeComboBox is not None:
+                self._refresh_extruder_type_selection()
+                self.octoprint_client.gcode(command='QUERY_EXTRUDER_MODE')
         except Exception as e:
             self.logger.error(f"Error in showEvent: {e}")
 

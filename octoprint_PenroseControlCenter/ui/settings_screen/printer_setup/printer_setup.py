@@ -13,21 +13,18 @@ from utils.printer_config_manager import (
     get_printer_config_manager,
     restore_octoprint_configs
 )
-from utils.printer_ui_config import is_hybrid_printer
-
 logger = get_logger(__name__)
-
-# Hybrid IDEX extruder modes shown in the mode selector.
-# The data value is the MODE= argument for SET_EXTRUDER_MODE.
-EXTRUDER_MODES = [
-    ("Pellet Extruder (T0)", "pellet"),
-    ("Filament Extruder (T1)", "filament"),
-]
 
 
 class PrinterSetup(QWidget):
     """
     Printer Setup widget that allows users to select and configure printer types.
+
+    Factory commissioning only: this screen changes the overall printer
+    build (SKU - Dual / Single / Hybrid) and copies firmware files. The
+    customer-facing Pellet/Filament extruder type switch for the Hybrid
+    IDEX lives on the material/nozzle screen instead
+    (filamentManagementScreen), not here.
     """
     
     # Signal emitted when printer configuration is successfully changed
@@ -55,9 +52,6 @@ class PrinterSetup(QWidget):
         self.setButton = self.findChild(QPushButton, "setButton")
         self.currentPrinterLabel = self.findChild(QLabel, "currentPrinterLabel")
         self.statusLabel = self.findChild(QLabel, "statusLabel")
-        # Hybrid IDEX extruder mode selector (hidden on non-hybrid printers)
-        self.modeLabel = self.findChild(QLabel, "modeLabel")
-        self.modeComboBox = self.findChild(QComboBox, "modeComboBox")
 
         # Validate UI components
         check_ui_elements(self, [
@@ -82,131 +76,6 @@ class PrinterSetup(QWidget):
 
         # Check firmware files status
         self.check_firmware_files_status()
-
-        # Set up the Hybrid IDEX extruder mode selector
-        self.setup_extruder_mode_selector()
-
-    # ------------------------------------------------------------------
-    # Hybrid IDEX extruder mode selector
-    # ------------------------------------------------------------------
-
-    def _get_printer_model(self):
-        """Return the shared PrinterModel, or None if unavailable."""
-        try:
-            return self.mainSettingsWidget.main_window.printer_model
-        except AttributeError:
-            return None
-
-    def _get_octoprint_client(self):
-        """Return the shared OctoPrint client, or None if unavailable."""
-        try:
-            return self.mainSettingsWidget.main_window.octoprint_client
-        except AttributeError:
-            return None
-
-    def setup_extruder_mode_selector(self):
-        """Configure the extruder mode selector (Hybrid IDEX only).
-
-        Mode switching is a lightweight runtime action - it persists the
-        mode in Klipper's variables.cfg via SET_EXTRUDER_MODE and (when the
-        machine is idle and homed) activates the tool immediately. It does
-        NOT copy firmware files; both extruders are always present on the
-        Hybrid IDEX.
-        """
-        try:
-            if self.modeComboBox is None or self.modeLabel is None:
-                return
-
-            if not is_hybrid_printer():
-                self.modeLabel.setVisible(False)
-                self.modeComboBox.setVisible(False)
-                return
-
-            self.modeLabel.setVisible(True)
-            self.modeComboBox.setVisible(True)
-
-            self.modeComboBox.blockSignals(True)
-            self.modeComboBox.clear()
-            for display_name, mode in EXTRUDER_MODES:
-                self.modeComboBox.addItem(display_name, mode)
-            self.modeComboBox.blockSignals(False)
-
-            # Wire signals once (this method also runs from showEvent)
-            if not getattr(self, '_mode_signals_connected', False):
-                # 'activated' fires only on user interaction, so programmatic
-                # refreshes never trigger a mode change
-                self.modeComboBox.activated.connect(self.on_extruder_mode_selected)
-                model = self._get_printer_model()
-                if model is not None:
-                    try:
-                        model.extruder_mode_changed.connect(self.refresh_extruder_mode_selection)
-                    except Exception as e:
-                        self.logger.warning(f"Could not connect extruder_mode_changed: {e}")
-                self._mode_signals_connected = True
-
-            self.refresh_extruder_mode_selection()
-        except Exception as e:
-            self.logger.error(f"Error setting up extruder mode selector: {e}")
-
-    def refresh_extruder_mode_selection(self, mode=None):
-        """Point the mode combobox at the model's cached extruder mode."""
-        try:
-            if self.modeComboBox is None or not self.modeComboBox.isVisible():
-                return
-            if mode is None:
-                model = self._get_printer_model()
-                mode = getattr(model, 'extruder_mode', 'pellet') if model else 'pellet'
-            for i in range(self.modeComboBox.count()):
-                if self.modeComboBox.itemData(i) == mode:
-                    if self.modeComboBox.currentIndex() != i:
-                        self.modeComboBox.blockSignals(True)
-                        self.modeComboBox.setCurrentIndex(i)
-                        self.modeComboBox.blockSignals(False)
-                    break
-        except Exception as e:
-            self.logger.error(f"Error refreshing extruder mode selection: {e}")
-
-    def on_extruder_mode_selected(self, index):
-        """Handle a user selection in the extruder mode combobox."""
-        try:
-            selected_mode = self.modeComboBox.itemData(index)
-            selected_display = self.modeComboBox.itemText(index)
-            model = self._get_printer_model()
-            current_mode = getattr(model, 'extruder_mode', 'pellet') if model else 'pellet'
-
-            if selected_mode == current_mode:
-                return
-
-            if not dialog.WarningYesNo(
-                self,
-                f"Switch to {selected_display} mode?\n\n"
-                "The mode is saved on the printer and applied at the start of "
-                "every print. If the printer is idle and homed, the tool "
-                "switches now (the carriages will move).",
-                overlay=True
-            ):
-                # User declined - snap back to the active mode
-                self.refresh_extruder_mode_selection(current_mode)
-                return
-
-            client = self._get_octoprint_client()
-            if client is None:
-                self.logger.error("No OctoPrint client available for mode switch")
-                self.statusLabel.setText("Mode switch failed: printer connection unavailable")
-                self.refresh_extruder_mode_selection(current_mode)
-                return
-
-            client.gcode(command=f'SET_EXTRUDER_MODE MODE={selected_mode.upper()}')
-            self.logger.info(f"Requested extruder mode switch to {selected_mode}")
-            self.statusLabel.setText(f"Extruder mode set to {selected_display}")
-
-            # Optimistically update the model cache; Klipper's
-            # EXTRUDER_MODE: response confirms (or corrects) it
-            if model is not None:
-                model.update_extruder_mode(selected_mode)
-        except Exception as e:
-            self.logger.error(f"Error switching extruder mode: {e}")
-            dialog.WarningOk(self, f"Error switching extruder mode: {e}", overlay=True)
 
     def populate_printer_options(self):
         """Populate the combobox with available printer configurations."""
@@ -396,16 +265,6 @@ class PrinterSetup(QWidget):
             self.populate_printer_options()
             self.update_current_printer_display()
             self.check_firmware_files_status()
-            self.setup_extruder_mode_selector()
-            # Re-query Klipper so the selector reflects variables.cfg even
-            # if the mode was changed outside the UI (console, macro)
-            if is_hybrid_printer():
-                client = self._get_octoprint_client()
-                if client is not None:
-                    try:
-                        client.gcode(command='QUERY_EXTRUDER_MODE')
-                    except Exception as e:
-                        self.logger.warning(f"Failed to query extruder mode: {e}")
         except Exception as e:
             self.logger.error(f"Error refreshing printer setup screen: {e}")
     

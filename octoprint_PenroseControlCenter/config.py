@@ -82,10 +82,16 @@ tool1PurgePosition = DEFAULT_TOOL1_PURGE_POSITION.copy()
 ptfeTubeLength = DEFAULT_PTFE_TUBE_LENGTH
 IS_DUAL_NOZZLE = DEFAULT_IS_DUAL_NOZZLE
 IS_HYBRID = DEFAULT_IS_HYBRID
-# Hybrid IDEX runtime extruder mode ('pellet' or 'filament'). Source of
-# truth is Klipper's variables.cfg; PrinterModel.update_extruder_mode()
-# mirrors it here so the UI-visibility helpers can read it dynamically
-# (same pattern as IS_HYBRID). 'pellet' matches the firmware default.
+# Hybrid extruder mode ('pellet' or 'filament').
+#
+# SOURCE OF TRUTH is which MODE_*.cfg printer.cfg includes - the mode is a
+# config-level property, not runtime state. This module-level value is a
+# cache so the UI-visibility helpers can read it cheaply and dynamically
+# (same pattern as IS_HYBRID). It is refreshed from:
+#   - load_printer_config_from_klipper()  (startup / after a mode switch)
+#   - PrinterModel.update_extruder_mode() (the firmware's EXTRUDER_MODE:
+#     announcement, emitted by the STARTUP delayed_gcode)
+# 'pellet' matches the firmware default when no mode include is active.
 EXTRUDER_MODE = 'pellet'
 HAS_HEATER_RING = DEFAULT_HAS_HEATER_RING
 HAS_HEATED_CHAMBER = DEFAULT_HAS_HEATED_CHAMBER
@@ -109,7 +115,7 @@ def load_printer_config_from_klipper():
             
         global calibrationPosition, machineBuildSize, tool0PurgePosition
         global tool1PurgePosition, ptfeTubeLength, IS_DUAL_NOZZLE, HAS_HEATER_RING
-        global HAS_HEATED_CHAMBER, HAS_SPOOL_HEATER, IS_HYBRID
+        global HAS_HEATED_CHAMBER, HAS_SPOOL_HEATER, IS_HYBRID, EXTRUDER_MODE
         
         # Update global variables with extracted configuration
         if 'calibrationPosition' in config:
@@ -132,6 +138,23 @@ def load_printer_config_from_klipper():
 
         if 'IS_HYBRID' in config:
             IS_HYBRID = config['IS_HYBRID']
+
+        # The extruder mode lives in printer.cfg's include selector rather
+        # than in PRINTER_VARIABLES, so read it straight from the config
+        # manager. Doing it here means every reload_printer_configuration()
+        # picks up a mode switch without needing Klipper to be up.
+        if IS_HYBRID:
+            try:
+                from utils.printer_config_manager import get_printer_config_manager
+                from utils.logger import get_logger
+                EXTRUDER_MODE = get_printer_config_manager().get_saved_extruder_mode()
+                get_logger(__name__).info(f"Active extruder mode: {EXTRUDER_MODE}")
+            except Exception as e:
+                try:
+                    from utils.logger import get_logger
+                    get_logger(__name__).warning(f"Could not determine extruder mode: {e}")
+                except Exception:
+                    print(f"Could not determine extruder mode: {e}")
 
         if 'HAS_HEATER_RING' in config:
             HAS_HEATER_RING = config['HAS_HEATER_RING']

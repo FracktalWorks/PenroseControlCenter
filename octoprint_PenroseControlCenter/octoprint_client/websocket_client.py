@@ -529,15 +529,17 @@ class OctoPrintWebSocket(QThread):
                                         self.logger.error(f"Error emitting filament_runout_sensor_triggered_signal: {e}")
 
                                 # Hybrid IDEX extruder mode - "EXTRUDER_MODE:PELLET" or
-                                # "EXTRUDER_MODE:FILAMENT" (may carry a trailing note like
-                                # "(applies at print start)")
+                                # "EXTRUDER_MODE:FILAMENT"
                                 elif 'EXTRUDER_MODE:' in item:
                                     try:
                                         if 'next print start' in item:
-                                            # Mode changed mid-print: it only engages at the
-                                            # next job (_APPLY_EXTRUDER_MODE confirms then),
-                                            # so keep the current-mode UI for the running print
-                                            self.logger.info(f"Extruder mode change deferred: {item}")
+                                            # Legacy firmware (BASE_PENROSE_HYBRID v1) deferred a
+                                            # mid-print mode change to the next job instead of
+                                            # refusing it. v2+ never emits this, but the plugin and
+                                            # the firmware configs update independently (the user
+                                            # can decline the firmware prompt), so keep handling it:
+                                            # the mode has NOT engaged yet, so leave the UI alone.
+                                            self.logger.info(f"Extruder mode change deferred (legacy firmware): {item}")
                                         else:
                                             mode = item.split('EXTRUDER_MODE:', 1)[1].split(' ', 1)[0].strip().lower()
                                             if mode in ('pellet', 'filament'):

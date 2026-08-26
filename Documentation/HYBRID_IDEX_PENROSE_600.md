@@ -1,337 +1,234 @@
-# Penrose 600 Hybrid IDEX — Pellet (T0) + Filament (T1)
+# Penrose 600 Hybrid — Pellet / Filament, config-swapped
 
 Branch: `Hybrid-IDEX-Penrose-600`
 
 ## What this machine is
 
-An IDEX Penrose 600 where the **left carriage (T0)** carries the usual pellet
-auger extruder and the **right carriage (T1)** carries a Dragon TD-01 filament
-extruder on a CAN-bus toolhead board.
+A Penrose 600 with **two carriages on one X rail**: a pellet auger on the
+left and a Dragon TD-01 filament extruder on a CAN toolhead on the right.
 
-Only one nozzle prints at a time. The second carriage exists so the operator
-can switch between pellet printing and filament printing with `T0`/`T1`
-instead of physically swapping the extruder head — it is *not* a dual-material
-or duplication machine. `M605 S2` (COPY) and `M605 S3` (MIRROR) are blocked
-with an error: two heads running different materials, flow rates and nozzle
-sizes cannot print the same part in parallel.
+**Only one is configured at a time.** The printing head is chosen by which
+config file `printer.cfg` includes, so **Klipper always sees a plain
+single-extruder cartesian printer**. There is no `[dual_carriage]`, no tool
+changing, no `T0`/`T1`, and no COPY/MIRROR.
 
-**Heaters differ between the two sides.** T0 has two: its nozzle heater (PA1)
-and the H0 pellet barrel heater (PA0). T1 is a regular filament hotend with a
-single heater on the CAN toolhead — there is no H1, and `M104 H1` / `M109 H1`
-return an error.
+The carriage that is not printing is held parked on its own endstop by a
+`[manual_stepper]` — it is physically on the same rail and must stay
+powered so it cannot drift into the printing head.
 
-Compared to the two configurations this was built from:
-
-| | Penrose 600 Dual | Penrose Single + filament head | **Penrose 600 Hybrid IDEX** |
+| | Penrose 600 Dual | Penrose Single | **Penrose 600 Hybrid** |
 |---|---|---|---|
-| Carriages | 2 (both pellet) | 1 | 2 (pellet + filament) |
-| Head choice | fixed | swap via UI dropdown | fixed per SKU |
-| Barrel heaters | H0 + H1 | H0 (pellet head only) | H0 only |
-| CAN toolhead | none | yes, when filament head selected | always |
-| Paired IDEX modes | COPY/MIRROR | n/a | blocked |
-| Revert path | — | pick the other head | pick the DUAL SKU |
-
-To convert a machine back to dual pellet, select **Penrose 600 Dual** in
-Settings → Printer Setup. The `[mcu E1]` block is commented out automatically
-and its UUID is kept for when you switch back.
+| Carriages | 2 (both pellet) | 1 | 2, one active at a time |
+| Klipper extruders | 2 | 1 | **1** |
+| Head choice | fixed | swap physically | config swap, from the UI |
+| Barrel heaters | H0 + H1 | H0 | **H0 in pellet mode only** |
+| CAN toolhead | none | none | filament mode only |
+| Bed levelling | either tool | yes | **pellet mode only** |
 
 ## Config files
 
 ```
-firmware/printer.cfg                      v12  selector + [mcu] + [mcu E1]
-firmware/PRINTER_PENROSE_600_HYBRID.cfg   v1   SKU: PRINTER_VARIABLES, kinematics, limits, bed mesh
-firmware/BASE_PENROSE_HYBRID.cfg          v1   all hardware + IDEX macros
-firmware/PELLET_RELAY_CONTROL_HYBRID.cfg  v1   left-only pellet feeder
-firmware/CORE_GCODE_MACROS.cfg                 shared Marlin-compat macros
+printer.cfg                        v18  SKU include + MODE include + [mcu] + [mcu E1]
+PRINTER_PENROSE_600_HYBRID.cfg     v2   kinematics, PRINTER_VARIABLES, bed mesh
+BASE_PENROSE_HYBRID.cfg            v3   SHARED: Y/Z, bed, probe, mode-adaptive macros
+MODE_PELLET.cfg                    v1   X=left carriage, auger + H0, pellet feeder
+MODE_FILAMENT.cfg                  v1   X=right carriage, TD-01 + side feeder
+PELLET_RELAY_CONTROL_HYBRID.cfg         included by MODE_PELLET.cfg only
+CORE_GCODE_MACROS.cfg                   shared Marlin-compat macros
 ```
 
-Only `printer.cfg`'s `# Version:` gates the in-app firmware update prompt — bump
-it whenever any of the above changes, or machines in the field will never be
-offered the update.
+Only `printer.cfg`'s `# Version:` gates the in-app firmware update prompt —
+bump it whenever any of the above changes.
 
-`variable_is_hybrid: 1` in `PRINTER_VARIABLES` is what the touchscreen app reads
-to switch to hybrid behaviour (`config.IS_HYBRID` → `is_hybrid_printer()`).
-`variable_is_dual_nozzle` stays `1`: this machine really does have two tools, and
-that flag drives OctoPrint's extruder count, the tool1 UI rows and the dual
-cooldown scripts.
+`printer.cfg` carries the mode selector:
 
-## CAN bus bring-up (first boot, once per machine)
+```ini
+#[include MODE_PELLET.cfg]
+#[include MODE_FILAMENT.cfg]
+```
 
-On this machine **both MCUs are CAN nodes** — the Manta M8P mainboard and the
-TD-01 toolhead board, aliased `E1`. That differs from the other Penrose
-variants, which reach the mainboard over USB serial.
+Exactly one is uncommented. **That line is the source of truth for the
+mode** — the plugin reads it the same way it reads the SKU include.
 
-1. **Bring up the `can0` interface** at 1 Mbit — `/etc/network/interfaces.d/can0`:
+## The two modes
 
-   ```
-   allow-hotplug can0
-   iface can0 can static
-       bitrate 1000000
-       up ip link set $IFACE txqueuelen 128
-   ```
-
-2. **Find both UUIDs:**
-
-   ```
-   ~/klippy-env/bin/python ~/klipper/scripts/canbus_query.py can0
-   ```
-
-   Two unclaimed UUIDs should appear. If nothing does, a board is not flashed
-   with a CAN-capable Klipper build, `can0` is down, or the bus is missing
-   termination at one end.
-
-3. **Edit `/home/pi/printer.cfg`** — the shipped template has the mainboard on
-   USB serial, because the DUAL and SINGLE variants share this file. For a
-   hybrid machine, replace the `serial:`/`restart_method:` lines under `[mcu]`
-   with the mainboard's UUID, and fill in the toolhead's:
-
-   ```
-   [mcu]
-   canbus_uuid: <mainboard UUID>
-
-   [mcu E1]
-   canbus_uuid: <toolhead UUID>
-   ```
-
-   Enter these once. `PrinterConfigManager._sync_toolhead_mcu()` preserves the
-   whole MCU block verbatim across every printer switch and firmware update —
-   it only comments or uncomments the `[mcu E1]` lines and never touches
-   `[mcu]` or rewrites a UUID. Selecting a non-hybrid SKU comments `[mcu E1]`
-   out, because Klipper errors on an MCU that no config section references.
-
-4. `FIRMWARE_RESTART`, then confirm Klipper reaches Ready and
-   `canbus_query.py` reports no unclaimed UUIDs.
-
-## Pin map
-
-### T0 — Pellet head (left carriage), mainboard
-
-| Function | Pin | Notes |
+| | Pellet mode | Filament mode |
 |---|---|---|
-| Auger step / dir / enable | PG9 / PD7 / !PG11 | M6 slot, DM542T external driver |
-| Nozzle heater / sensor | PA1 / PC5 | AC heater at `max_power: 0.5` |
-| H0 barrel heater / sensor | PA0 / PB0 | max 480 °C |
-| Part fans | PF7 / PF9 | `extruder_CF_0`, `extruder_CF_1` |
-| Line vac solenoid | !PE9 | `pellet_vac_left`, PWM, active-LOW relay |
-| 5/2 valve second solenoid | !PD15 | `pellet_vac_right`, **declared and held LOW** |
-| Hopper level sensor | ^!PF4 | `pellet_sensor_left` |
+| `[stepper_x]` | M1, endstop `^PF0` | M2, endstop `^PF3` |
+| Travel | −85 … 600 (parks −85) | 0 … 640 (parks 640) |
+| Parked carriage | filament, held at 640 | pellet, held at −85 |
+| `[extruder]` | M6 auger, `PA1` heater | TD-01 CAN, `E1: gpio20` |
+| **Heaters** | **two — nozzle + H0 barrel** | **one — nozzle** |
+| Part fans | `extruder_CF_0` + `_1` | `extruder1_CF` |
+| Sensor | hopper level (`pellet_sensor_left`) | runout (`switch_sensor_E1`) |
+| `[mcu E1]` | commented out | uncommented |
+| Bed levelling | **yes** | no — uses the stored mesh |
 
-`pellet_vac_right` has no hopper behind it on this machine, but the pin must
-still be declared: a floating PD15 energises the second solenoid and shifts the
-5/2 valve to the wrong position.
+### Kinematics are carried over unchanged
 
-### T1 — Filament head (right carriage), CAN toolhead + M7
+Every `[stepper_x]` value in each mode file is a **verbatim copy** of the
+old IDEX config — pins, microsteps, rotation distance, endstop, homing
+speed, and the travel limits. The rail did not move; only Klipper's view of
+it did.
 
-| Function | Pin | Notes |
+**Carriage separation** was previously enforced dynamically by
+`[dual_carriage] safe_distance: 60`. With no `dual_carriage` there is no
+dynamic check, so separation is now purely static geometry:
+
+| | printing carriage reaches | other carriage held at | gap |
+|---|---|---|---|
+| Pellet mode | 600 | 640 | **40 mm** |
+| Filament mode | 0 | −85 | 85 mm |
+
+40 mm is what the machine already had at full travel, but it is below the
+old 60 mm dynamic limit — meaning the previous config would have *rejected*
+pellet moves past X=580 while the other carriage sat at 640.
+**Commissioning check:** jog the pellet carriage to X=600 with the filament
+carriage parked and measure the clearance. If they foul, reduce
+`position_max` to 580 in `MODE_PELLET.cfg`.
+
+### Head offset
+
+The two heads are not mounted at the same point on their carriages. The old
+IDEX config corrected this with `SET_GCODE_OFFSET` every time T1 was
+activated, using `tool_offset_x/y/z` from `variables.cfg`.
+
+There is no tool activation any more, so `_APPLY_HEAD_OFFSET` does it
+instead: **the pellet head is the zero reference** (the probe and Z endstop
+are calibrated to it) and filament mode gets the stored offset. It is
+applied at boot and **re-applied after every home**, because
+`homing_override` clears gcode offsets.
+
+The values carry over untouched from IDEX commissioning. To change them:
+
+```
+SET_HEAD_OFFSET X=0.4 Y=-0.2 Z=0.15     # persisted, applies to filament mode
+QUERY_HEAD_OFFSET                        # stored + live values
+```
+
+The old IDEX XY/camera calibration wizards used `M605` COPY/MIRROR and are
+hidden on this machine — measure by printing a single-wall square in each
+mode and comparing displacement.
+
+## Bed levelling
+
+**`G29` works in pellet mode only** — only the pellet nozzle triggers the
+bed probe. In filament mode `G29` reports that it is skipping and re-asserts
+the stored mesh with `M420 S1` rather than aborting, so a filament job whose
+start gcode calls `G29` still prints.
+
+The mesh is stored as profile `p1` and is **shared between modes**: it lives
+in the shared half of the `SAVE_CONFIG` block (below) and `M420 S1` in
+`CORE_GCODE_MACROS.cfg` loads it in either mode. The mesh describes the bed,
+which does not change; the filament nozzle's different height is handled by
+`tool_offset_z`.
+
+**Level in pellet mode.**
+
+## Per-mode calibration (`SAVE_CONFIG`)
+
+Both modes define a section literally called `[extruder]`, but a pellet
+auger on an AC band heater and a TD-01 hotend need completely different PID
+values. The plugin therefore splits the `SAVE_CONFIG` block on every switch:
+
+| Stored | Sections | Why |
 |---|---|---|
-| Extruder step / dir / enable | `E1: gpio24 / !gpio21 / !gpio28` | TMC2209 on the toolhead |
-| TMC2209 UART | `E1: gpio25` | `run_current: 0.850`, `stealthchop_threshold: 0` |
-| Hotend heater / sensor | `E1: gpio20` / `gpio26` | EPCOS 100K, max 310 °C |
-| Part fan | `E1: gpio10` | `extruder1_CF` |
-| Hotend cooling fan | `E1: gpio8` | `extruder1_AOF`, `heater: extruder1` |
-| Side motor step / dir / enable | PD4 / PD3 / !PD6 | M7 slot on the mainboard |
-| Side motor TMC5160 | cs PD5, SPI PG6/PG7/PG8 | `run_current: 1.00` |
-| Filament runout switch | ^PC15 | M6-STOP, `switch_sensor_E1` |
+| **Per mode** | `[extruder]`, `[tmc2209]`, `[tmc5160]` | genuinely different hardware |
+| **Shared** | everything else — `[bed_mesh *]`, `[stepper_z]`, `[probe]` | properties of the machine, calibrated against the pellet head |
 
-The runout switch is on **M6-STOP (PC15)** — the input that carried the
-right-hand hopper's capacitive level sensor on the dual pellet machine,
-repurposed for the filament head. **PF3 (M2-STOP) is not available** for this:
-it is the `dual_carriage` X endstop on this IDEX machine.
+Files live in `/home/pi/.penrose/`. Default-to-shared is deliberate: an
+unanticipated section is preserved rather than silently dropped.
 
-There is **no filament flow / motion sensor** on this machine.
+First switch into a mode with nothing stored keeps the shared data and drops
+the other head's PID — **re-run `PID_CALIBRATE HEATER=extruder` once per
+mode**.
 
-The runout only pauses when T1 is the printing tool, so an empty filament spool
-never interrupts a pellet print on T0:
+## Switching modes
 
-```
-pause_on_runout: False
-runout_gcode:
-    {% if printer.toolhead.homed_axes == 'xyz' and printer.toolhead.extruder == 'extruder1' %}
-        RESPOND TYPE=echo MSG="Filament Runout T1"
-        PAUSE
-    {% endif %}
-```
+Settings → Printer Setup is **factory-only** (SKU selection). The customer
+switch is the **Extruder Type dropdown on the Material/Nozzle screen**.
 
-`pause_on_runout` must stay **False**: when it is True, Klipper's
-`filament_switch_sensor` module pauses the print *before* rendering
-`runout_gcode`, so the tool guard above would be powerless and a dry T1 spool
-would park a running T0 pellet print. With False, the pause happens only when
-the template explicitly issues `PAUSE` — and Klipper's `PAUSE` command sends
-the same `action:paused` notification to OctoPrint that the built-in path
-would, so nothing is lost. This matches the pattern used by every pellet
-sensor in `PELLET_RELAY_CONTROL_*.cfg`.
+Sequence, ordered so the parked carriage can never be hit:
 
-### Side feed motor sync
+1. `PREPARE_EXTRUDER_MODE_SWITCH` — refuses if printing/paused, **homes so
+   both carriages sit on their own endstops**, heaters off (`M104 S0` plus
+   `M104 H0 S0` in pellet mode), `M400`, flush `SAVE_CONFIG`.
+2. Plugin: store the outgoing mode's calibration, flip the include, restore
+   the incoming mode's calibration, toggle `[mcu E1]`.
+3. Regenerate OctoPrint's profile and per-mode gcode scripts.
+4. `FIRMWARE_RESTART`.
 
-`[extruder_stepper extruder_side1]` binds `extruder: extruder1` in the config,
-so Klipper syncs the side feeder to the CAN drive motor at connect time —
-the two are in lock-step from the moment Klipper starts. (Per the Klipper
-config reference, `extruder:` is a required key on `[extruder_stepper]`; an
-empty value means "not synchronized" and would leave the feeder idle until a
-macro syncs it.) The `SYNC_E1_EXTRUDER` delayed_gcode, `FULL_CONTROL`, and
-`homing_override` all re-assert the sync so a prior session's macros cannot
-leave the two motors detached.
+Takes roughly a minute. **Unlike the old runtime switch this requires a
+Klipper restart** — that is the cost of Klipper genuinely seeing one
+extruder.
 
-### Pins freed relative to Penrose 600 Dual
-
-`PA3` and `PC4` (H1 barrel heater and sensor), `PA5` and `PA7` (T1 pellet nozzle
-heater and sensor), `PF6` and `PF8` (T1 pellet part fans).
-
-## G-code behaviour
+## G-code
 
 | Command | Behaviour |
 |---|---|
-| `T0` / `T1` | Switch active tool with autopark and tool offsets. The only supported way to change printing head. |
-| `M104 S… T0/T1` | Nozzle temperature for the given tool. |
-| `M104 S… H0` | T0 pellet barrel heater. |
-| `M104 S… H1` | **Error** — there is no barrel heater on the filament head. |
-| `M109` | Same routing as `M104`, waits for temperature. |
-| `M106 P0 S…` | T0 fans (`extruder_CF_0` + `extruder_CF_1`). |
-| `M106 P1 S…` | T1 toolhead fan (`extruder1_CF`). |
-| `M106 S…` | All fans. Empty fan-name variables are skipped. |
-| `M605 S0` / `S1` | FULL_CONTROL with autopark off / on. |
-| `M605 S2` / `S3` | **Error** — COPY/MIRROR are not supported on this machine. |
-| `M701` / `LOAD_FILAMENT` | Heat T1, then push filament with the CAN motor and side feeder together. `S` temp, `L` length, `F` speed. |
-| `M702` / `UNLOAD_FILAMENT` | Heat T1, retract, then turn the heater off. |
-| `PELLET_PREPRINT_CHECK` | No-ops when T1 is the active tool. |
-| `MIX_HOPPER` | No-ops when T1 is the active tool. |
-| `SET_EXTRUDER_MODE MODE=PELLET/FILAMENT` | Persist the printing mode (variables.cfg). Applies immediately when idle + homed, otherwise at the next print start. |
-| `_APPLY_EXTRUDER_MODE` | Activate the saved mode's tool (homes first if needed) and apply mode motion limits. Run automatically by OctoPrint's `beforePrintStarted` script. |
-| `ASSERT_EXTRUDER_MODE MODE=PELLET/FILAMENT` | Slicer-profile guard — **cancels the print** with an error if the file's declared mode does not match the machine's mode. |
-| `QUERY_EXTRUDER_MODE` | Report the saved mode and the active tool. |
-| `G29` | Always probes with **T0** — the bed probe rides the pellet carriage; the TD-01 filament head has no probe. Pre-heats the nozzle to 150 °C **in pellet mode only** (in filament mode the pellet nozzle stays cold), and hands the carriage back to the mode's tool afterwards. |
+| `M104 S…` / `M109 S…` | The nozzle. `T` is accepted and ignored — one tool. |
+| `M104 S… H0` | Pellet barrel heater. **Errors in filament mode.** |
+| `M106` / `M107` | The active mode's part fan(s). `P` ignored. |
+| `G29` | Pellet mode only (see above). |
+| `M420 S1` | Load the shared mesh. |
+| `M701` / `M702` | Filament load/unload — filament mode only. |
+| `PELLET_PREPRINT_CHECK`, `MIX_HOPPER` | Pellet mode only. |
+| `QUERY_EXTRUDER_MODE` | Report mode and heater count. |
+| `ASSERT_EXTRUDER_MODE MODE=…` | Slicer guard — cancels on mismatch. |
+| `SET_HEAD_OFFSET` / `QUERY_HEAD_OFFSET` | Filament head offset. |
+| `PREPARE_EXTRUDER_MODE_SWITCH` | Run by the UI before a swap. |
+| `SET_EXTRUDER_MODE` | **Removed** — errors, directing you to the UI. |
+| `T0`/`T1`, `M605`, `FULL_CONTROL` | **Gone** — no second tool exists. |
 
-Pellet auto-refill additionally requires T0 to be the active tool, so a
-filament-only print can never trip a pellet outage pause or fire the line vac.
+## UI and OctoPrint
 
-## Extruder mode (Pellet / Filament)
+The SKU sets `variable_is_dual_nozzle: 0`, so the existing single-nozzle
+path hides every tool1 row, the H1 column and the T0/T1 toggles
+automatically. **The only thing that varies between modes is the heater
+count:**
 
-Both extruders are always present, so "mode" is a runtime state, not a config
-swap: it decides **which tool a print uses when the sliced gcode contains no
-explicit `T0`/`T1` commands** — the normal case, since both pellet and filament
-jobs are sliced with single-extruder profiles.
+- **Pellet** — nozzle rows **and** H0 barrel rows on Home; H0 column on
+  Control; sensor toggle reads "Pellet Level Sensor"; bay reads "Pellet
+  Extruder".
+- **Filament** — nozzle rows only; H0 hidden everywhere; toggle reads
+  "Filament Runout Sensor"; bay reads "Filament Extruder".
 
-- **Where**: Settings → Printer Setup → "Extruder Mode" dropdown (hybrid SKU
-  only). Switching asks for confirmation, then sends `SET_EXTRUDER_MODE`.
-  No firmware files are copied and no restart is needed.
-- **Persistence**: `extruder_mode` in Klipper's `variables.cfg` — survives
-  restarts and firmware config updates. Defaults to `pellet` when unset.
-- **Application**: OctoPrint's `beforePrintStarted` script runs
-  `_APPLY_EXTRUDER_MODE` → `PELLET_PREPRINT_CHECK` → `M514 S1`. The pellet
-  check self-gates on the active tool, so it no-ops in filament mode.
-- **Homing interaction**: `[homing_override]` forces T0 during every home
-  (probe safety and legacy IDEX behaviour), then — after a **full** home only —
-  re-activates T1 when the saved mode is `filament`. This is what keeps a job
-  whose own start gcode calls `G28` printing on the filament head. The restore
-  is motionless (T0 is at its −85 park, so autopark is skipped). Partial homes
-  (`G28 X`) keep the legacy end-on-T0 behaviour.
-- **Overrides**: explicit `T0`/`T1` in sliced gcode still wins — the mode only
-  sets the starting tool.
-- **Motion limits**: applying a mode also applies its motion tuning via
-  `_EXTRUDER_MODE_LIMITS` — pellet keeps the gentler corners from the
-  `[printer]` section (`SQUARE_CORNER_VELOCITY=4`) for melt-pressure
-  stability; filament runs standard limits (`SQUARE_CORNER_VELOCITY=5`).
-- **UI presentation**: in either mode the touchscreen presents the machine as
-  a single-extruder printer — the Home screen shows only the mode's tool
-  (plus the H0 barrel in pellet mode) and re-skins **live** when the mode
-  changes; no firmware restart is needed. The Control and Filament screens
-  deliberately keep both tools visible so the operator can prep the inactive
-  head (preheat, load filament) before switching modes on the fly. A mode
-  switched mid-print does not re-skin until it actually engages at the next
-  job.
+**OctoPrint:**
 
-**Slicer contract for mode-based printing**: one single-extruder machine
-definition per mode (in Fracktory 5 these are the
-`penrose_600_idex_choosable_pellet` / `..._fdm` pair — the machine dropdown is
-the slicer-side mode selector). Each profile's start gcode must:
+- `extruder.count = 1` — now honest, because Klipper really has one.
+- H0 reaches the web UI's temperature stream natively via `gcode_id: H0`
+  → `M105`.
+- **Cooldown scripts are generated per mode**: pellet's includes
+  `M104 H0 S0` (otherwise the barrel keeps heating after every print),
+  filament's omits it (it would error).
+- `beforePrintStarted` includes `PELLET_PREPRINT_CHECK` in pellet mode only.
+- Temperature presets and the profile name follow the mode.
 
-1. Declare its mode — `ASSERT_EXTRUDER_MODE MODE=FILAMENT` (or `PELLET`) as
-   the **first command**, before any heating. If the machine is in the other
-   mode, the print cancels immediately with a clear error instead of printing
-   with the wrong head.
-2. Then either **explicitly select the matching tool** (`T1` in the filament
-   profile, `T0` in the pellet profile — the Fracktory choosable profiles do
-   this) or emit no tool command at all and let the mode's tool apply
-   automatically (bare `M104`/`M109 S…` target the active tool; full `G28`
-   restores the mode's tool). Both are supported; never select the *other*
-   tool.
-3. Pellet profiles keep their `M104 H0 S…` barrel line and `MIX_HOPPER`
-   layer-change/interval injection.
-4. Never emit `M605` (`S0/S1` runs `FULL_CONTROL`, which deliberately ends on
-   T0 and would defeat filament mode).
+## Wrong-file protection
 
-`ASSERT_EXTRUDER_MODE` only exists on the Hybrid IDEX firmware — keep it out
-of profiles that also target the dual-pellet or single machines.
+Two independent layers:
 
-**Input shaping:** no accelerometer is fitted, so `SHAPER_CALIBRATE` cannot be
-run and the UI button stays disabled. The `[input_shaper]` section is present
-if you want to set values by hand from a ringing tower test.
+1. **`ASSERT_EXTRUDER_MODE`** in the sliced start gcode — cancels on
+   mismatch. Requires the slicer profile to emit it.
+2. **`validate_gcode_extruder_mode`** — the plugin scans the first 256 KB at
+   `PrintStarted` and cancels. Covers the touchscreen, **the web UI**, the
+   REST API and print-restore alike.
 
-## Sensors and the UI
+Detection: `ASSERT_EXTRUDER_MODE` is authoritative; failing that,
+`M104/M109 H0`, `MIX_HOPPER` or `PELLET_PREPRINT_CHECK` at line start imply
+pellet. No signal at all → **the print proceeds** (no filament-side
+heuristic, or every legacy pellet file would falsely cancel).
 
-Three sensors exist; the Control screen exposes two toggles.
+Mode mismatch always cancels — no "continue anyway", and not gated on the
+compatibility-check preference.
 
-| Toggle | Drives | Preference key |
-|---|---|---|
-| "T0 Pellet Level Sensor" | `pellet_sensor_left` | `pellet_sensor_t0_enabled` |
-| "T1 Filament Runout Sensor" | `switch_sensor_E1` | `extruder_runout_enabled` |
+## Slicer contract
 
-Lifecycle, from `MainController`:
+One single-extruder machine definition per mode. Each start gcode must:
 
-| Event | Action |
-|---|---|
-| Startup, print started, print resumed | `apply_extruder_sensors()` — all sensors per preference |
-| Print paused, cancelled, completed | `disable_extruder_sensors()` — all sensors off |
-| Filament wizard open | T1 runout suspended; restored on Done/Cancel |
-
-Sensors are disabled outside a print because manual loading and purging look
-exactly like a runout, which would spuriously pause the next job.
-
-Klipper reports the T1 event with `RESPOND TYPE=echo MSG="Filament Runout T1"`,
-which the websocket client parses into a dialog.
-
-## Other UI behaviour on this variant
-
-- **H1 rows hidden** on the Home and Control screens (`HYBRID_HIDDEN_ELEMENTS`);
-  tool1 nozzle temperature rows stay visible.
-- **Nozzle sizes are per tool** — `nozzle_options_for_tool()`: T0 offers the
-  pellet range (0.6–3.0 mm), T1 the filament range (0.25–1.0 mm).
-- **Material button routing** — T0 opens the line vac load dialog, T1 opens the
-  filament load/unload wizard.
-- **T1's status label** shows its filament bay state (Loaded/Empty), not a
-  hopper level; pellet sensor polling skips it.
-- **Extruder Mode dropdown** in Printer Setup (see "Extruder mode" above). The
-  selection mirrors Klipper's `variables.cfg` via the `EXTRUDER_MODE:` websocket
-  messages, and is re-queried every time the screen opens.
-- **Mode-skinned Home screen** — only the active mode's tool rows are shown
-  (`MODE_HIDDEN_ELEMENTS` in `printer_ui_config.py`), re-applied live on
-  `extruder_mode_changed`.
-- **OctoPrint web UI temperature presets** — the hybrid SKU appends PLA/PETG/ABS
-  *Filament* presets to the pellet presets in `config.yaml`.
-- The plugin's software updater tracks the `Hybrid-IDEX-Penrose-600` branch by
-  commit, not by release tag, so a release on the default branch cannot
-  overwrite this variant.
-
-## First power-on checklist
-
-1. Settings → Printer Setup → **Penrose 600 Hybrid** → Set. After the reboot,
-   check `/home/pi/printer.cfg`: the HYBRID include is active, `[mcu E1]` is
-   uncommented with your UUID, `[mcu]` has the mainboard UUID, and the
-   `SAVE_CONFIG` block survived.
-2. `canbus_query.py` reports no unclaimed UUIDs; Klipper reaches Ready.
-3. `QUERY_PELLET_SYSTEM` → left vac and sensor present, no right entries.
-   Measure PD15 at the relay and confirm it is held LOW.
-4. `DUMP_TMC STEPPER=extruder1` and `DUMP_TMC STEPPER=extruder_side1` both respond.
-5. Heaters: `M104 T1 S60` ramps the CAN hotend, `M104 H0 S60` ramps the pellet
-   barrel, `M104 H1 S60` returns a clean error.
-6. `QUERY_FILAMENT_SENSOR SENSOR=switch_sensor_E1` reports correctly with
-   filament present and absent.
-7. `G28`, then `T1` and `T0` — autopark cycles without collision.
-8. `M605 S2` → error message, no motion.
-9. `M106 P1 S255` spins only the toolhead fan; `M106 P0 S255` only the T0 fans.
-10. With T1 active, `G1 E10` turns both the CAN motor and the M7 side motor.
-    With T0 active, the side motor stays still. Check the side motor direction
-    matches the CAN motor — if it fights, invert `dir_pin: PD3`.
-11. `M701` and `M702` load and unload cleanly.
-12. `PID_CALIBRATE HEATER=extruder1`, then IDEX XY/Z tool-offset calibration.
-13. Test print with a mid-print T0 ↔ T1 switch.
+1. `ASSERT_EXTRUDER_MODE MODE=PELLET` (or `FILAMENT`) **first**, before heating.
+2. **Emit no `T0`/`T1` at all** — there is only one tool, and a `T1` will
+   fail. Existing IDEX-era files with explicit tool commands must be re-sliced.
+3. Pellet profiles keep `M104 H0 S…` and MixHopper injection. In filament
+   mode `H0` errors, which is a useful extra guard.
+4. Never emit `M605`.

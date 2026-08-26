@@ -70,18 +70,25 @@ def has_spool_heater():
 DUAL_NOZZLE_ELEMENTS = {
     'home_screen': [
         'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
-        'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature', 'tool1TextLabel', 'toolSeperationLine',
+        # Home screen order: tool0 -> toolSeparationLine -> H0 ->
+        # toolSeparationLine_2 -> tool1 -> H1 -> bed. Only the separator
+        # that leads into the tool1 block goes away with it; the first one
+        # still divides tool0 from H0, which both remain on a single nozzle.
+        'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature', 'tool1TextLabel',
+        'toolSeparationLine_2',
         'H1TargetTemperature', 'H1ActualTemperature', 'H1TempBar', 'H1Label', 'H1TextLabel'
     ],
     'control_screen': [
         'toolToggleTemperatureButton', 'toolToggleMotionButton',
         'togglePelletSensorT1Button',
-        'H1TempSpinBox', 'setH1TempButton', 'H140PreheatButton', 'H160PreheatButton'
+        # Hide the H1 container, not its individual controls: it also holds
+        # H1Label and H1IconLabel, which otherwise stayed behind as a
+        # captionless "H1" heading with nothing under it.
+        'horizontalLayoutWidget_H1'
     ],
     'filament_management_screen': [
         'changeTool1MaterialBayX', 'tool1Frame', 'editTool1MaterialBayX',
-        'tool11MaterialBayXStateColor', 'tool1MaterialBayXStateLabel', 'changeTool1Button',
-        'tool1MaterialBayXLabel'
+        'tool11MaterialBayXStateColor', 'tool1MaterialBayXStateLabel', 'changeTool1Button'
     ],
     'calibrate_screen': [
         'idexCalibrationWizardButton', 'toolOffsetZButton', 'toolOffsetXYButton',
@@ -92,44 +99,59 @@ DUAL_NOZZLE_ELEMENTS = {
 # UI elements that should be hidden on Hybrid IDEX printers.
 # T1 is a filament extruder: it has no H1 barrel heater, so those rows go
 # away while the regular tool1 nozzle temperature rows stay visible.
+# The tool toggle buttons are also gone: the machine presents as a
+# single-extruder printer in either mode, so the mode - not a toggle -
+# decides which tool the temperature and motion controls target.
 HYBRID_HIDDEN_ELEMENTS = {
     'home_screen': [
         'H1TargetTemperature', 'H1ActualTemperature', 'H1TempBar', 'H1Label', 'H1TextLabel'
     ],
     'control_screen': [
-        'H1TempSpinBox', 'setH1TempButton', 'H140PreheatButton', 'H160PreheatButton'
+        # Whole H1 column, container and all (see DUAL_NOZZLE_ELEMENTS) -
+        # the filament head has no barrel heater
+        'horizontalLayoutWidget_H1',
+        'toolToggleTemperatureButton', 'toolToggleMotionButton'
     ]
 }
 
-# Hybrid IDEX extruder-mode skin: in either mode the machine presents as a
-# single-extruder printer, so the Home screen shows only the mode's tool.
-# Keyed by mode -> screen -> elements that belong to the OTHER tool and get
-# hidden while that mode is active (and re-shown when the mode flips).
-# Only the Home screen (status display) is skinned - the Control and
-# Filament screens keep both tools so the operator can prep the inactive
-# head (preheat, load filament) before switching modes on the fly.
-# Home screen layout order: tool0 -> toolSeparationLine -> H0 ->
-# toolSeparationLine_2 -> tool1 -> H1 (always hidden on hybrid) -> bed.
+# Hybrid extruder-mode skin.
+#
+# Since the config-swap model, Klipper only ever has ONE extruder, so the
+# SKU sets variable_is_dual_nozzle: 0 and DUAL_NOZZLE_ELEMENTS above
+# already hides every tool1 row, the H1 column and the T0/T1 toggles.
+# The only thing that still varies BETWEEN the two modes is the heater
+# count:
+#
+#   PELLET   - TWO heaters: the nozzle (tool0 rows) AND the H0 pellet
+#              barrel heater. Both must be visible and both must be
+#              settable from the Control screen.
+#   FILAMENT - ONE heater: the nozzle only. There is no H0 hardware in
+#              this config at all, so every H0 row and control is hidden.
+#
+# Keyed by mode -> screen -> elements hidden while that mode is active
+# (and re-shown when the mode flips). Anything listed under one mode but
+# not the other is what toggles.
 MODE_HIDDEN_ELEMENTS = {
     'pellet': {
-        'home_screen': [
-            # T1 filament rows hidden while in pellet mode, plus the
-            # separator that led into them
-            'tool1Label', 'tool1LoadedNozzle', 'tool1LoadedFilament',
-            'tool1TargetTemperature', 'tool1TempBar', 'tool1ActualTemperature',
-            'tool1TextLabel', 'toolSeparationLine_2'
-        ]
+        # Nothing extra to hide: pellet mode is the "everything visible"
+        # case - nozzle rows plus the H0 barrel rows.
+        'home_screen': [],
+        'control_screen': [],
+        'filament_management_screen': []
     },
     'filament': {
         'home_screen': [
-            # T0 pellet rows (nozzle + H0 barrel) and both separators
-            # hidden while in filament mode - tool1 stands alone above bed
-            'tool0Label', 'tool0LoadedNozzle', 'tool0LoadedFilament',
-            'tool0TargetTemperature', 'tool0TempBar', 'tool0ActualTemperature',
-            'tool0TextLabel', 'toolSeparationLine', 'toolSeparationLine_2',
+            # No H0 barrel heater on the filament head. Its separator goes
+            # too, or the layout leaves a divider with nothing under it.
             'H0TargetTemperature', 'H0ActualTemperature', 'H0TempBar',
-            'H0Label', 'H0TextLabel'
-        ]
+            'H0Label', 'H0TextLabel', 'toolSeparationLine'
+        ],
+        'control_screen': [
+            # Whole H0 barrel column - container hides label, icon,
+            # spinbox, set button and both preheat buttons in one go
+            'horizontalLayoutWidget_H0'
+        ],
+        'filament_management_screen': []
     }
 }
 
@@ -292,53 +314,86 @@ def apply_extruder_mode_to_all_screens(main_window):
     """
     if not is_hybrid_printer():
         return
+    mode = get_extruder_mode()
     screen_names = set()
     for per_mode in MODE_HIDDEN_ELEMENTS.values():
         screen_names.update(per_mode.keys())
     for screen_name in screen_names:
         if hasattr(main_window, screen_name):
-            apply_extruder_mode_visibility(getattr(main_window, screen_name), screen_name)
-    logger.info(f"Applied extruder mode '{get_extruder_mode()}' to screens: {sorted(screen_names)}")
+            screen = getattr(main_window, screen_name)
+            apply_extruder_mode_visibility(screen, screen_name)
+            # Screens with mode-dependent behaviour beyond show/hide
+            # (control routing, selector state) expose a hook
+            if hasattr(screen, 'on_extruder_mode_applied'):
+                try:
+                    screen.on_extruder_mode_applied(mode)
+                except Exception as e:
+                    logger.error(f"Error in {screen_name}.on_extruder_mode_applied: {e}")
+    logger.info(f"Applied extruder mode '{mode}' to screens: {sorted(screen_names)}")
 
 def configure_sensor_toggles_for_hybrid(widget):
     """
-    Relabel the control screen sensor toggles for a Hybrid IDEX printer.
+    Relabel the control screen's sensor toggle for the active Hybrid mode.
 
-    T0 keeps its pellet level sensor. T1 has no hopper - its toggle drives the
-    filament runout and flow sensors instead, so the label has to say so.
+    The machine is single-extruder in both modes, so there is exactly ONE
+    sensor toggle (``togglePelletSensorT0Button``); the T1 toggle is
+    hidden by the single-nozzle path. What that one toggle means depends
+    on which head is fitted by the active config:
+
+        pellet mode   -> the hopper level sensor (pellet_sensor_left)
+        filament mode -> the filament runout switch (switch_sensor_E1)
+
+    Only the label changes here; the routing lives in
+    ControlScreen.togglePelletSensorT0 and
+    MainController.apply_extruder_sensors, both of which key off the mode.
 
     Args:
         widget: The control screen widget
     """
     if not is_hybrid_printer():
         return
-    labels = {
-        'feedRateLabelControlPage_3': 'T0 Pellet Level Sensor',
-        'feedRateLabelControlPage_2': 'T1 Filament Runout Sensor',
-    }
-    for element_name, text in labels.items():
-        element = getattr(widget, element_name, None)
-        if element is None:
-            element = widget.findChild(QWidget, element_name)
-        if element is None:
-            logger.warning(f"Sensor toggle label not found: {element_name}")
-            continue
-        try:
-            element.setText(text)
-            logger.debug(f"Relabelled {element_name} -> '{text}'")
-        except Exception as e:
-            logger.error(f"Error relabelling {element_name}: {e}")
+    mode = get_extruder_mode()
+    label_text = ('Filament Runout Sensor' if mode == 'filament'
+                  else 'Pellet Level Sensor')
+    element = getattr(widget, 'feedRateLabelControlPage_3', None)
+    if element is None:
+        element = widget.findChild(QWidget, 'feedRateLabelControlPage_3')
+    if element is None:
+        logger.warning("Sensor toggle label not found: feedRateLabelControlPage_3")
+        return
+    try:
+        element.setText(label_text)
+        logger.debug(f"Sensor toggle relabelled for {mode} mode -> '{label_text}'")
+    except Exception as e:
+        logger.error(f"Error relabelling sensor toggle: {e}")
 
-    # T1's toggle is hidden on single nozzle machines, but the Hybrid IDEX
-    # always has both tools, so make sure it is visible.
-    t1_toggle = getattr(widget, 'togglePelletSensorT1Button', None)
-    if t1_toggle is None:
-        t1_toggle = widget.findChild(QWidget, 'togglePelletSensorT1Button')
-    if t1_toggle:
-        try:
-            t1_toggle.show()
-        except Exception as e:
-            logger.error(f"Error showing togglePelletSensorT1Button: {e}")
+
+def configure_material_bay_for_hybrid(widget):
+    """
+    Name the single material bay after the head the active config fits.
+
+    Only one bay is shown (the machine is single-extruder), so "Tool 0" is
+    replaced with the head type - which is also the cue that tells the
+    operator which mode the machine is currently in.
+
+    Args:
+        widget: The filament management screen widget
+    """
+    if not is_hybrid_printer():
+        return
+    mode = get_extruder_mode()
+    title = 'Filament Extruder' if mode == 'filament' else 'Pellet Extruder'
+    element = getattr(widget, 'calibrateLabel_6', None)
+    if element is None:
+        element = widget.findChild(QWidget, 'calibrateLabel_6')
+    if element is None:
+        logger.warning("Material bay label not found: calibrateLabel_6")
+        return
+    try:
+        element.setText(title)
+        logger.debug(f"Material bay relabelled -> '{title}'")
+    except Exception as e:
+        logger.error(f"Error relabelling material bay: {e}")
 
 def get_heater_ring_elements(screen_name):
     """
@@ -476,6 +531,8 @@ def apply_nozzle_config_to_screen(widget, screen_name):
     hide_spool_heater_elements(widget, get_spool_heater_elements(screen_name))
     if screen_name == 'control_screen':
         configure_sensor_toggles_for_hybrid(widget)
+    elif screen_name == 'filament_management_screen':
+        configure_material_bay_for_hybrid(widget)
 
 def apply_nozzle_config_to_all_screens(main_window):
     """
@@ -506,6 +563,8 @@ def apply_nozzle_config_to_all_screens(main_window):
                     hide_hybrid_elements(screen, elements)
             if hasattr(main_window, 'control_screen'):
                 configure_sensor_toggles_for_hybrid(main_window.control_screen)
+            if hasattr(main_window, 'filament_management_screen'):
+                configure_material_bay_for_hybrid(main_window.filament_management_screen)
 
             logger.info("Successfully applied Hybrid IDEX configuration to all screens")
         except Exception as e:

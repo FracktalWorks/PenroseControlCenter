@@ -7,7 +7,8 @@ from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QSpinBox, QTabWidget, QToolButton, QLabel, QVBoxLayout, QHBoxLayout, QFrame, QLabel
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen, is_dual_nozzle_printer, is_hybrid_printer
+from utils.printer_ui_config import (apply_nozzle_config_to_screen, is_dual_nozzle_printer,
+                                     is_hybrid_printer, get_extruder_mode)
 from utils import dialog
 
 try:
@@ -319,10 +320,41 @@ class ControlScreen(QWidget):
     def apply_nozzle_configuration(self):
         """Hide dual nozzle elements and apply styling for single nozzle configuration."""
         apply_nozzle_config_to_screen(self, 'control_screen')
-        
+
         # Apply border radius styling for single nozzle mode
         if not is_dual_nozzle_printer():
             self._apply_single_nozzle_styling()
+
+        # Hybrid IDEX: route the (toggle-less) tool controls to the
+        # active extruder mode's tool from the start
+        if is_hybrid_printer():
+            self.on_extruder_mode_applied(get_extruder_mode())
+
+    def on_extruder_mode_applied(self, mode):
+        """Point the tool controls at the extruder mode's tool (Hybrid IDEX).
+
+        The T0/T1 toggle buttons are hidden on the hybrid - the machine
+        presents as a single-extruder printer - but their checked state
+        still routes setToolTemp/preheatToolTemp and the extrude/retract
+        buttons, so keep them in lock-step with the mode. Called by
+        apply_extruder_mode_to_all_screens whenever the mode (re)applies.
+
+        Args:
+            mode: 'pellet' (T0) or 'filament' (T1)
+        """
+        if not is_hybrid_printer():
+            return
+        try:
+            is_filament = (mode == 'filament')
+            self.toolToggleTemperatureButton.setChecked(is_filament)
+            # Refresh the temp spinbox from the newly targeted tool
+            self.selectToolTemperature()
+            # Mirror the active tool on the (hidden) motion toggle; the
+            # firmware already activated the tool, so only UI state here
+            self.setActiveExtruder(1 if is_filament else 0)
+            self.logger.debug(f"Control screen tool controls routed to {'T1' if is_filament else 'T0'}")
+        except Exception as e:
+            self.logger.error(f"Error applying extruder mode to control screen: {e}")
 
     def _apply_single_nozzle_styling(self):
         """Apply custom styling for single nozzle configuration."""
@@ -368,7 +400,8 @@ class ControlScreen(QWidget):
             self.octoprint_client.gcode(command='M144')  # Ring heater off (M144)
             if self.H0TempSpinBox:
                 self.octoprint_client.gcode(command='M104 H0 S0')  # Secondary heater H0
-            if self.H1TempSpinBox and is_dual_nozzle_printer():
+            # No H1 on the Hybrid IDEX (filament head has no barrel heater)
+            if self.H1TempSpinBox and is_dual_nozzle_printer() and not is_hybrid_printer():
                 self.octoprint_client.gcode(command='M104 H1 S0')  # Secondary heater H1
             
             # Update UI spinboxes

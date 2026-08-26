@@ -65,6 +65,65 @@ KLIPPER_CONFIG_PATH = '/home/pi/'
 OCTOPRINT_CONFIG_PATH = '/home/pi/.octoprint/'
 BACKUP_CFG_PATTERN = '/home/pi/printer-*.cfg'
 
+# Klipper's [save_variables] target (CORE_GCODE_MACROS.cfg). Holds the
+# tool offsets and babystep. (The extruder mode is NOT stored here any
+# more - it is which MODE_*.cfg printer.cfg includes.)
+KLIPPER_VARIABLES_PATH = '/home/pi/.octoprint/data/klipper/variables.cfg'
+
+# ---------------------------------------------------------------------------
+# Hybrid extruder mode (config-swap model)
+#
+# The printing head is selected by which MODE_*.cfg printer.cfg includes.
+# Klipper therefore sees a single-extruder printer in either mode, and the
+# two modes are free to define the SAME section names ([stepper_x],
+# [extruder], ...) with different pins.
+#
+# That freedom is exactly why calibration has to be stored per mode: both
+# modes have a section literally called [extruder], but a pellet auger on an
+# AC band heater and a TD-01 hotend need completely different PID values,
+# and their nozzles sit at different heights so [stepper_z] position_endstop
+# differs too. A single shared SAVE_CONFIG block would let each mode switch
+# silently overwrite the other mode's calibration.
+# ---------------------------------------------------------------------------
+EXTRUDER_MODES = ('pellet', 'filament')
+MODE_CFG_FILES = {
+    'pellet': 'MODE_PELLET.cfg',
+    'filament': 'MODE_FILAMENT.cfg',
+}
+# Where the per-mode and shared halves of the SAVE_CONFIG block are kept
+# between switches.
+MODE_STATE_DIR = '/home/pi/.penrose'
+
+# SAVE_CONFIG sections that belong to the PRINT HEAD and must therefore be
+# stored separately per mode. Everything else is a property of the machine
+# and is SHARED.
+#
+# Default-to-shared is deliberate. The only genuinely head-specific
+# calibration is the extruder heater's PID: a pellet auger on an AC band
+# heater and a TD-01 hotend need completely different values, and both
+# modes call that section literally "[extruder]".
+#
+# What must NOT be per-mode:
+#   [bed_mesh *]  - the bed's shape. Only the pellet nozzle triggers the
+#                   probe, so filament mode depends on inheriting it.
+#   [stepper_z]   - the Z endstop position, a gantry property.
+#   [probe]       - z_offset, calibrated against the pellet nozzle.
+# The filament nozzle's different height/position is corrected by
+# tool_offset_x/y/z applied as a gcode offset (_APPLY_HEAD_OFFSET),
+# exactly as the old IDEX config did - NOT by re-zeroing the machine.
+PER_MODE_SAVE_CONFIG_PREFIXES = ('extruder', 'tmc2209', 'tmc5160')
+
+# OctoPrint temperature presets for the Hybrid IDEX filament head. The
+# pellet presets are the ones shipped in the template config.yaml (the
+# pellet machine is the base configuration), so only the filament set
+# needs defining here. Whichever set matches the active extruder mode is
+# what the OctoPrint web UI offers - see get_temperature_profiles_for_mode.
+FILAMENT_TEMP_PRESETS = [
+    {'name': 'PLA Filament', 'extruder': 210, 'bed': 60, 'chamber': None},
+    {'name': 'PETG Filament', 'extruder': 240, 'bed': 80, 'chamber': None},
+    {'name': 'ABS Filament', 'extruder': 245, 'bed': 100, 'chamber': None},
+]
+
 # Fallback values when configuration cannot be read
 FALLBACK_CONFIG = {
     'name': 'Unknown Printer',
@@ -384,6 +443,381 @@ class PrinterConfigManager:
     # OCTOPRINT CONFIGURATION MANAGEMENT
     # ========================================================================
     
+    def get_saved_extruder_mode(self) -> str:
+        """Return the active Hybrid extruder mode from printer.cfg.
+
+        The mode is whichever ``[include MODE_*.cfg]`` line is uncommented -
+        the same mechanism ``get_current_printer_selection()`` uses for the
+        SKU. Reading the file (rather than querying Klipper) means this works
+        while Klipper is down or restarting, which is exactly when the
+        OctoPrint configs are regenerated.
+
+        Returns:
+            'pellet' or 'filament' ('pellet' when no mode include is active,
+            matching the firmware default and the pre-swap behaviour)
+        """
+        try:
+            if not os.path.exists(self.printer_cfg_path):
+                return 'pellet'
+            with open(self.printer_cfg_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    stripped = line.strip()
+                    if stripped.startswith('#') or not stripped.startswith('[include MODE_'):
+                        continue
+                    match = re.search(r'MODE_(\w+)\.cfg', stripped)
+                    if match:
+                        mode = match.group(1).lower()
+                        if mode in EXTRUDER_MODES:
+                            return mode
+        except Exception as e:
+            logger.warning(f"Could not read extruder mode from printer.cfg: {e}")
+        return 'pellet'
+
+    # ------------------------------------------------------------------
+    # Per-mode SAVE_CONFIG storage
+    # ------------------------------------------------------------------
+
+    def _mode_state_path(self, name: str) -> str:
+        """Path of a stored SAVE_CONFIG fragment ('shared', 'pellet', ...)."""
+        return os.path.join(MODE_STATE_DIR, f'saveconfig_{name}.cfg')
+
+    @staticmethod
+    def _parse_save_config_sections(block: str) -> List[tuple]:
+        """Split a SAVE_CONFIG block into [(section_name, [lines]), ...].
+
+        Operates on the raw ``#*#``-prefixed text. Header lines (everything
+        before the first ``#*# [section]``) are dropped - they are re-added
+        by _compose_save_config.
+        """
+        sections: List[tuple] = []
+        current_name = None
+        current_lines: List[str] = []
+        for raw in block.split('\n'):
+            stripped = raw.strip()
+            if not stripped.startswith('#*#'):
+                continue
+            body = stripped[3:].strip()
+            if body.startswith('[') and body.endswith(']'):
+                if current_name is not None:
+                    sections.append((current_name, current_lines))
+                current_name = body[1:-1].strip()
+                current_lines = []
+            elif current_name is not None and body:
+                current_lines.append(body)
+        if current_name is not None:
+            sections.append((current_name, current_lines))
+        return sections
+
+    @classmethod
+    def _render_sections(cls, sections: List[tuple]) -> str:
+        """Render [(name, lines)] back to ``#*#``-prefixed text."""
+        out: List[str] = []
+        for name, lines in sections:
+            out.append(f'#*# [{name}]')
+            for line in lines:
+                out.append(f'#*# {line}')
+            out.append('#*#')
+        return '\n'.join(out)
+
+    @classmethod
+    def _is_shared_section(cls, name: str) -> bool:
+        """True for SAVE_CONFIG sections that belong to the machine, not the head.
+
+        Inverted logic on purpose: anything not explicitly head-specific is
+        shared, so a Klipper section nobody anticipated defaults to being
+        preserved across modes rather than silently discarded.
+        """
+        head = name.split()[0].lower() if name else ''
+        return head not in PER_MODE_SAVE_CONFIG_PREFIXES
+
+    def split_save_config_block(self, block: str) -> tuple:
+        """Split a SAVE_CONFIG block into (shared_text, per_mode_text)."""
+        sections = self._parse_save_config_sections(block)
+        shared = [s for s in sections if self._is_shared_section(s[0])]
+        per_mode = [s for s in sections if not self._is_shared_section(s[0])]
+        return self._render_sections(shared), self._render_sections(per_mode)
+
+    def compose_save_config_block(self, shared_text: str, per_mode_text: str) -> str:
+        """Rebuild a full SAVE_CONFIG block from its two halves."""
+        body = '\n'.join(part for part in (per_mode_text, shared_text) if part.strip())
+        if not body.strip():
+            return ''
+        return self.SAVE_CONFIG_HEADER + body + '\n'
+
+    def store_mode_calibration(self, mode: str) -> bool:
+        """Split the live SAVE_CONFIG block and file it away for `mode`.
+
+        Called BEFORE swapping the mode include, so the calibration the
+        outgoing mode just had is preserved for when it comes back.
+        """
+        try:
+            if not os.path.exists(self.printer_cfg_path):
+                return False
+            with open(self.printer_cfg_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            marker = content.find(self.SAVE_CONFIG_MARKER)
+            if marker == -1:
+                logger.info("No SAVE_CONFIG block to store")
+                return True
+            shared_text, per_mode_text = self.split_save_config_block(content[marker:])
+
+            os.makedirs(MODE_STATE_DIR, exist_ok=True)
+            with open(self._mode_state_path('shared'), 'w', encoding='utf-8') as f:
+                f.write(shared_text)
+            with open(self._mode_state_path(mode), 'w', encoding='utf-8') as f:
+                f.write(per_mode_text)
+            logger.info(
+                f"Stored calibration for '{mode}' mode "
+                f"({len(per_mode_text.splitlines())} lines) + shared bed data "
+                f"({len(shared_text.splitlines())} lines)"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error storing calibration for mode '{mode}': {e}")
+            return False
+
+    def load_mode_calibration(self, mode: str) -> str:
+        """Return the SAVE_CONFIG block for `mode` (shared bed data + its own).
+
+        Returns an empty string when nothing is stored yet - the caller then
+        falls back to whatever the deployed printer.cfg already had, and
+        _seed_probe_z_offset() still guarantees the machine can boot.
+        """
+        try:
+            shared_text = ''
+            per_mode_text = ''
+            shared_path = self._mode_state_path('shared')
+            mode_path = self._mode_state_path(mode)
+            if os.path.exists(shared_path):
+                with open(shared_path, 'r', encoding='utf-8') as f:
+                    shared_text = f.read()
+            if os.path.exists(mode_path):
+                with open(mode_path, 'r', encoding='utf-8') as f:
+                    per_mode_text = f.read()
+            if not shared_text.strip() and not per_mode_text.strip():
+                logger.info(f"No stored calibration for '{mode}' mode yet")
+                return ''
+            return self.compose_save_config_block(shared_text, per_mode_text)
+        except Exception as e:
+            logger.error(f"Error loading calibration for mode '{mode}': {e}")
+            return ''
+
+    def set_extruder_mode(self, mode: str) -> bool:
+        """Switch the Hybrid machine between pellet and filament mode.
+
+        Rewrites the ``[include MODE_*.cfg]`` selector in printer.cfg, files
+        away the outgoing mode's calibration, restores the incoming mode's,
+        and toggles ``[mcu E1]`` to match (the CAN toolhead is referenced
+        only by filament mode, and Klipper errors on an unreferenced MCU).
+
+        The caller is responsible for running PREPARE_EXTRUDER_MODE_SWITCH
+        beforehand (home + park + heaters off + flush SAVE_CONFIG) and for
+        restarting Klipper afterwards.
+
+        Args:
+            mode: 'pellet' or 'filament'
+
+        Returns:
+            True on success
+        """
+        if mode not in EXTRUDER_MODES:
+            logger.error(f"Invalid extruder mode: {mode}")
+            return False
+        try:
+            previous = self.get_saved_extruder_mode()
+            if not os.path.exists(self.printer_cfg_path):
+                logger.error("printer.cfg not found - cannot switch extruder mode")
+                return False
+
+            # 1. File away the calibration belonging to the mode we are
+            #    leaving, BEFORE the block gets rewritten.
+            self.store_mode_calibration(previous)
+
+            with open(self.printer_cfg_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 2. Flip the include lines.
+            out_lines: List[str] = []
+            seen = {m: False for m in EXTRUDER_MODES}
+            for line in content.split('\n'):
+                bare = line.lstrip().lstrip('#').lstrip()
+                match = re.match(r'\[include MODE_(\w+)\.cfg\]', bare)
+                if match:
+                    this_mode = match.group(1).lower()
+                    if this_mode in EXTRUDER_MODES:
+                        seen[this_mode] = True
+                        out_lines.append(bare if this_mode == mode else '#' + bare)
+                        continue
+                out_lines.append(line)
+            content = '\n'.join(out_lines)
+
+            # A machine whose printer.cfg predates the config-swap model has
+            # neither include line - add the block after the SKU selector.
+            if not any(seen.values()):
+                anchor = '[include PRINTER_PENROSE_600_HYBRID.cfg]'
+                insert = (
+                    '\n########################################\n'
+                    '# Select Extruder Mode - HYBRID IDEX ONLY\n'
+                    '########################################\n'
+                    + ''.join(
+                        f"{'' if m == mode else '#'}[include {MODE_CFG_FILES[m]}]\n"
+                        for m in EXTRUDER_MODES
+                    )
+                    + '########################################\n'
+                )
+                for candidate in (anchor, '#' + anchor):
+                    if candidate in content:
+                        content = content.replace(candidate, candidate + insert, 1)
+                        break
+                else:
+                    content = content.rstrip('\n') + '\n' + insert
+                logger.info("Inserted MODE_* include block into printer.cfg")
+
+            # 3. Swap in the incoming mode's calibration.
+            marker = content.find(self.SAVE_CONFIG_MARKER)
+            restored = self.load_mode_calibration(mode)
+            if restored:
+                content = (content[:marker].rstrip('\n') + '\n\n' + restored
+                           if marker != -1 else
+                           content.rstrip('\n') + '\n\n' + restored)
+                logger.info(f"Restored stored calibration for '{mode}' mode")
+            elif marker != -1 and previous != mode:
+                # Nothing stored for the incoming mode yet (first switch).
+                # Keep only the shared bed data - carrying the OTHER mode's
+                # PID and Z zero across would be worse than having none.
+                shared_text, _ = self.split_save_config_block(content[marker:])
+                rebuilt = self.compose_save_config_block(shared_text, '')
+                content = content[:marker].rstrip('\n') + ('\n\n' + rebuilt if rebuilt else '\n')
+                logger.info(
+                    f"No stored calibration for '{mode}' mode - kept shared bed "
+                    "data only; recalibrate PID and Z offset for this head"
+                )
+
+            # 4. The CAN toolhead is referenced by filament mode only.
+            content = self._sync_toolhead_mcu_for_mode(content, mode)
+
+            # 5. Klipper refuses to start without [probe] z_offset.
+            content = self._seed_probe_z_offset(content)
+
+            with open(self.printer_cfg_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            logger.info(f"Extruder mode switched: {previous} -> {mode}")
+            return True
+        except Exception as e:
+            logger.error(f"Error switching extruder mode to '{mode}': {e}")
+            return False
+
+    def _ensure_mode_include(self, content: str, selected_printer: str) -> str:
+        """Guarantee exactly one MODE_*.cfg include is active on a hybrid SKU.
+
+        Non-hybrid SKUs are left untouched: they never include
+        BASE_PENROSE_HYBRID.cfg, so a stray commented mode line is inert.
+
+        Args:
+            content: the printer.cfg text about to be written
+            selected_printer: SKU name being deployed
+
+        Returns:
+            content with the correct mode include uncommented (and
+            [mcu E1] set to match)
+        """
+        if 'HYBRID' not in (selected_printer or '').upper():
+            return content
+        try:
+            # Preserve the mode the machine is already in; a machine being
+            # migrated for the first time has none, so start in pellet.
+            mode = self.get_saved_extruder_mode()
+
+            out_lines: List[str] = []
+            found = False
+            for line in content.split('\n'):
+                bare = line.lstrip().lstrip('#').lstrip()
+                match = re.match(r'\[include MODE_(\w+)\.cfg\]', bare)
+                if match and match.group(1).lower() in EXTRUDER_MODES:
+                    this_mode = match.group(1).lower()
+                    found = True
+                    out_lines.append(bare if this_mode == mode else '#' + bare)
+                    continue
+                out_lines.append(line)
+            content = '\n'.join(out_lines)
+
+            if not found:
+                # Template predates the mode selector - append the block
+                block = (
+                    '\n########################################\n'
+                    '# Select Extruder Mode - HYBRID ONLY\n'
+                    '########################################\n'
+                    + ''.join(
+                        f"{'' if m == mode else '#'}[include {MODE_CFG_FILES[m]}]\n"
+                        for m in EXTRUDER_MODES
+                    )
+                    + '########################################\n'
+                )
+                content = content.rstrip('\n') + '\n' + block
+                logger.info("Added MODE_* include block to printer.cfg")
+
+            # The CAN toolhead is referenced by filament mode only
+            content = self._sync_toolhead_mcu_for_mode(content, mode)
+            logger.info(f"Hybrid SKU deployed in '{mode}' extruder mode")
+            return content
+        except Exception as e:
+            logger.error(f"Error ensuring mode include: {e}")
+            return content
+
+    def _sync_toolhead_mcu_for_mode(self, content: str, mode: str) -> str:
+        """Comment/uncomment ``[mcu E1]`` for the given extruder mode.
+
+        Filament mode drives the TD-01 over CAN and needs it; pellet mode
+        references nothing on that MCU, and Klipper errors on an MCU no
+        section uses. Reuses the printer-level toggler by passing a name it
+        reads as hybrid-or-not.
+        """
+        return self._sync_toolhead_mcu(content, 'HYBRID' if mode == 'filament' else 'PELLET_MODE')
+
+    @staticmethod
+    def get_mode_profile_name(base_name: str, mode: str) -> str:
+        """Name the OctoPrint printer profile after the active extruder mode.
+
+        The web UI shows this in its printer selector, so it is how a
+        remote operator can tell which head the machine will print with.
+
+        Args:
+            base_name: The SKU display name (e.g. "Penrose 600 Hybrid")
+            mode: 'pellet' or 'filament'
+        """
+        suffix = 'Filament' if mode == 'filament' else 'Pellet'
+        # Strip any previously applied suffix so repeated switches do not
+        # accumulate "(Pellet) (Filament)"
+        cleaned = re.sub(r'\s*\((?:Pellet|Filament)\)\s*$', '', base_name)
+        return f"{cleaned} ({suffix})"
+
+    def get_temperature_profiles_for_mode(self, mode: str) -> List[Dict[str, Any]]:
+        """Return the OctoPrint temperature presets for a Hybrid extruder mode.
+
+        The machine presents as a single-extruder printer in either mode, so
+        the web UI should only offer the presets that make sense for the head
+        that is actually printing - pellet temperatures on a filament hotend
+        (up to 300 C) would be a real hazard.
+
+        Args:
+            mode: 'pellet' or 'filament'
+
+        Returns:
+            List of OctoPrint temperature profile dicts
+        """
+        if mode == 'filament':
+            return [dict(preset) for preset in FILAMENT_TEMP_PRESETS]
+        # Pellet presets are the template's own (pellet machine is the base)
+        try:
+            source_config = os.path.join(self.config_path, 'config.yaml')
+            with open(source_config, 'r') as f:
+                template = yaml.safe_load(f) or {}
+            profiles = (template.get('temperature') or {}).get('profiles') or []
+            return [dict(p) for p in profiles if isinstance(p, dict)]
+        except Exception as e:
+            logger.error(f"Could not read pellet temperature presets: {e}")
+            return []
+
     def update_octoprint_config(self, printer_name: str) -> bool:
         """Update OctoPrint config.yaml with printer-specific settings."""
         try:
@@ -404,22 +838,19 @@ class PrinterConfigManager:
 
             config_data['appearance']['name'] = self.get_printer_display_name(printer_name)
 
-            # Hybrid IDEX (pellet T0 + filament T1): extend the pellet-only
-            # temperature presets with filament presets so the OctoPrint web
-            # UI offers sensible one-tap temps for the T1 filament head too.
+            # Hybrid IDEX (pellet T0 + filament T1): the machine presents as a
+            # single-extruder printer in whichever extruder mode is active, so
+            # the OctoPrint web UI gets only that mode's temperature presets.
+            # (A merged list would offer 300 C pellet presets while a filament
+            # hotend is the printing head.) Runtime mode switches push the
+            # other set live over the REST API - see
+            # MainController.apply_extruder_mode_to_octoprint.
             printer_config = self.get_printer_config_from_variables(printer_name)
             if bool(printer_config.get('variables', {}).get('is_hybrid', 0)):
-                filament_presets = [
-                    {'name': 'PLA Filament', 'extruder': 210, 'bed': 60, 'chamber': None},
-                    {'name': 'PETG Filament', 'extruder': 240, 'bed': 80, 'chamber': None},
-                    {'name': 'ABS Filament', 'extruder': 245, 'bed': 100, 'chamber': None},
-                ]
+                mode = self.get_saved_extruder_mode()
                 temp_section = config_data.setdefault('temperature', {})
-                profiles = temp_section.setdefault('profiles', [])
-                existing_names = {p.get('name') for p in profiles if isinstance(p, dict)}
-                for preset in filament_presets:
-                    if preset['name'] not in existing_names:
-                        profiles.append(preset)
+                temp_section['profiles'] = self.get_temperature_profiles_for_mode(mode)
+                logger.info(f"Seeded OctoPrint temperature presets for '{mode}' mode")
 
             # Ensure destination directory exists
             os.makedirs(os.path.dirname(dest_config), exist_ok=True)
@@ -454,6 +885,14 @@ class PrinterConfigManager:
             
             # Update profile with dynamic configuration
             profile_data['name'] = printer_config['name']
+            # Hybrid: since the config-swap model, Klipper genuinely has one
+            # [extruder] in either mode, so variable_is_dual_nozzle is 0 and
+            # this resolves to 1. That is now honest - OctoPrint's single
+            # Tool control maps to the only extruder that exists.
+            #
+            # (Under the old runtime-switch model this had to stay 2: a
+            # 1-extruder profile emitted T0, which in filament mode heated
+            # the *pellet* nozzle. That hazard is gone with the swap.)
             profile_data['extruder']['count'] = printer_config['extruder_count']
             profile_data['volume']['width'] = float(printer_config['bed_width'])
             profile_data['volume']['depth'] = float(printer_config['bed_depth'])
@@ -469,7 +908,13 @@ class PrinterConfigManager:
                 profile_data['extruder']['offsets'] = [
                     [0.0, 0.0]
                 ]
-                    
+
+            # Hybrid IDEX: name the profile after the active extruder mode so
+            # a web-UI operator can see which head the machine will print with
+            if bool(printer_config.get('variables', {}).get('is_hybrid', 0)):
+                mode = self.get_saved_extruder_mode()
+                profile_data['name'] = self.get_mode_profile_name(printer_config['name'], mode)
+
             # Ensure destination directory exists
             os.makedirs(os.path.dirname(dest_profile), exist_ok=True)
             
@@ -536,23 +981,44 @@ class PrinterConfigManager:
                 is_dual = printer_config.get('is_dual', True)
                 is_hybrid = bool(printer_config.get('variables', {}).get('is_hybrid', 0))
 
-                if is_dual:
-                    after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM104 T1 S0  ; Cool down tool1 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
-                else:
-                    after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
-
                 if is_hybrid:
-                    # Hybrid IDEX: activate the saved extruder mode's tool
-                    # (pellet=T0 / filament=T1) before the job gcode runs, so
-                    # single-extruder slicer profiles print with the tool the
-                    # operator selected in the UI. PELLET_PREPRINT_CHECK
-                    # self-gates on the active tool (no-op in filament mode).
-                    before_print_started = (
-                        '_APPLY_EXTRUDER_MODE  ; Activate pellet/filament mode tool\n'
-                        'PELLET_PREPRINT_CHECK  ; Refill T0 hopper if empty (skipped in filament mode)\n'
-                        'M514 S1  ; Open door/chamber on print start'
-                    )
+                    # Hybrid is a SINGLE-extruder machine in either mode
+                    # (the mode is a config file), so there is no T1 to cool
+                    # and no tool to activate. What DOES differ is the heater
+                    # count: pellet mode has the nozzle AND the H0 barrel
+                    # heater, filament mode has only the nozzle. Emitting
+                    # M104 H0 in filament mode would error, and omitting it
+                    # in pellet mode would leave the barrel cooking after
+                    # every print - so generate the right one per mode.
+                    mode = self.get_saved_extruder_mode()
+                    cooldown_lines = [
+                        'G28  ; Home all axes',
+                        'M107  ; Turn off part cooling fan',
+                        'M104 S0  ; Cool down nozzle',
+                    ]
+                    if mode == 'pellet':
+                        cooldown_lines.append('M104 H0 S0  ; Cool down pellet barrel heater')
+                    cooldown_lines += [
+                        'M140 S0  ; Cool down bed',
+                        'M84  ; Disable motors',
+                        'M514 S0  ; Close door/chamber',
+                    ]
+                    after_print_cooldown = '\n'.join(cooldown_lines)
+
+                    # PELLET_PREPRINT_CHECK only exists in pellet mode - the
+                    # pellet feeder config is not included in filament mode.
+                    before_lines = []
+                    if mode == 'pellet':
+                        before_lines.append(
+                            'PELLET_PREPRINT_CHECK  ; Refill hopper if empty')
+                    before_lines.append('M514 S1  ; Open door/chamber on print start')
+                    before_print_started = '\n'.join(before_lines)
+                    logger.info(f"Generated OctoPrint gcode scripts for '{mode}' mode")
                 else:
+                    if is_dual:
+                        after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM104 T1 S0  ; Cool down tool1 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
+                    else:
+                        after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
                     before_print_started = 'M514 S1  ; Open door/chamber on print start'
 
                 default_scripts = {
@@ -811,6 +1277,17 @@ class PrinterConfigManager:
             # toolhead MCU straight on the template content instead.
             if not existing_mcu_section:
                 final_content = self._sync_toolhead_mcu(final_content, selected_printer)
+
+            # HYBRID ONLY: guarantee exactly one MODE_*.cfg is active.
+            #
+            # The shipped printer.cfg has BOTH mode includes commented out,
+            # because they are meaningless on every other SKU. On a hybrid
+            # that would leave Klipper with no [stepper_x], no [extruder] and
+            # no EXTRUDER_MODE_VARIABLES - it would not start at all. So on
+            # selecting the hybrid SKU, carry the machine's existing mode
+            # over, or default to pellet on a first deployment (pellet is the
+            # mode that can bed level, so it is the right place to start).
+            final_content = self._ensure_mode_include(final_content, selected_printer)
 
             # Klipper refuses to start without [probe] z_offset; make sure
             # the SAVE_CONFIG block provides one (no-op when already there)
