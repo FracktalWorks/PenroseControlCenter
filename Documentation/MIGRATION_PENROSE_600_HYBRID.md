@@ -11,8 +11,9 @@ Companion reference: `HYBRID_IDEX_PENROSE_600.md` (pin map, macros, per-mode
 calibration). Design rationale: `DESIGN_HYBRID_IDEX_CONFIG_SWAP.md`.
 
 > **This is a first deployment of a reworked motion configuration.** Work
-> through §5 with the emergency stop in reach. Two behaviours (§5.1, §5.2)
-> have never run on hardware.
+> through §5 with the emergency stop in reach. The carriage clearance at
+> full travel (§5.2) is the one geometry figure that has never been
+> measured — the old config enforced it dynamically and this one cannot.
 
 ---
 
@@ -117,18 +118,20 @@ sensor badly, and under-reading makes the PID drive the heater *harder*:
 
 ## 5. Motion — the new part. Take this slowly.
 
-### 5.1 Parked carriage holds  ⚠ never tested on hardware
+### 5.1 Parked carriage holds — quick confirmation
 
-The right carriage is held by `[manual_stepper]`, and its motor is briefly
-**unpowered** during a Klipper restart.
+X and Y are **ball screw driven**, so a parked carriage cannot drift: the
+screw and the stepper's detent torque hold it mechanically even with the
+driver unpowered. This is what makes the brief unpowered window during
+`FIRMWARE_RESTART` safe, and the `[manual_stepper]` in each mode file is
+belt-and-braces rather than the sole guard.
+
+Worth one confirmation anyway, since it underpins every mode switch:
 
 - [ ] Home (`G28`). Both carriages go to their endstops.
 - [ ] Mark the right carriage's position against the rail.
-- [ ] `FIRMWARE_RESTART`. **Watch it.** It must not move.
+- [ ] `FIRMWARE_RESTART` — it must not move.
 - [ ] Push it gently by hand once Klipper is up — it should resist.
-
-**If it drifts:** stop. The carriage needs its endstop back and a boot-time
-home; do not run mode switches until that is fixed.
 
 ### 5.2 Carriage clearance  ⚠ measurement required
 
