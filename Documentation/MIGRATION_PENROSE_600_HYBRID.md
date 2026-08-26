@@ -118,20 +118,39 @@ sensor badly, and under-reading makes the PID drive the heater *harder*:
 
 ## 5. Motion — the new part. Take this slowly.
 
-### 5.1 Parked carriage holds — quick confirmation
+### 5.1 Parked carriage homes and holds
+
+Each mode file gives the parked carriage **its own endstop** — the one it
+used when it was the printing carriage (PF3 for the filament carriage, PF0
+for the pellet one; the pin is always free because the printing carriage
+homes on the other). It is homed onto that endstop at **every boot** and
+again **before every mode switch**.
+
+That matters because `G28` cannot do it: `G28` homes the kinematic axes,
+which is only the printing carriage plus Y and Z. The parked carriage is a
+`[manual_stepper]` and is invisible to it. Without the explicit home its
+position would be an assumption, and after a swap it becomes `[stepper_x]`
+with Klipper having no idea where it really is.
+
+Both homing moves travel **away** from the other carriage — each endstop is
+at that carriage's own far end — so the direction is inherently safe.
+
+- [ ] Power on. The parked carriage travels to its far end and stops.
+      Console: `… carriage homed and parked at its endstop`.
+- [ ] `G28`. The printing carriage homes; the parked one does not move.
+
+Verify:
+
+- [ ] Home (`G28`). Both carriages are at their end positions.
+- [ ] Mark the parked carriage against the rail.
+- [ ] `FIRMWARE_RESTART` — it must not move.
+- [ ] Push it gently by hand once Klipper is up — it should resist.
 
 X and Y are **ball screw driven**, so a parked carriage cannot drift: the
 screw and the stepper's detent torque hold it mechanically even with the
-driver unpowered. This is what makes the brief unpowered window during
-`FIRMWARE_RESTART` safe, and the `[manual_stepper]` in each mode file is
-belt-and-braces rather than the sole guard.
-
-Worth one confirmation anyway, since it underpins every mode switch:
-
-- [ ] Home (`G28`). Both carriages go to their endstops.
-- [ ] Mark the right carriage's position against the rail.
-- [ ] `FIRMWARE_RESTART` — it must not move.
-- [ ] Push it gently by hand once Klipper is up — it should resist.
+driver unpowered. That covers the brief unpowered window during
+`FIRMWARE_RESTART`, and also `M84`, which de-energises every stepper
+including this one.
 
 ### 5.2 Carriage clearance  ⚠ measurement required
 
