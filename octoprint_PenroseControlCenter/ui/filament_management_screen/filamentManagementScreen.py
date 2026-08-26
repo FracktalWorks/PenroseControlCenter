@@ -344,6 +344,26 @@ class filamentManagementScreen(QWidget):
             self.octoprint_client.gcode(command='PREPARE_EXTRUDER_MODE_SWITCH')
             self._wait_ms(45000, "homing and parking")
 
+            # 1b. RE-CHECK before touching printer.cfg.
+            #
+            # PREPARE_EXTRUDER_MODE_SWITCH refuses if the machine is busy,
+            # but it does so asynchronously - gcode() is fire-and-forget, so
+            # a refusal (or a failed G28) does not surface here. Without
+            # this guard the config would be rewritten regardless, which in
+            # the worst case means swapping the machine's kinematics out
+            # from under a print that started in the window between the
+            # status check above and the macro actually running.
+            #
+            # Only proceed from a clean idle state. Anything else - a print
+            # that slipped in, or Klipper faulting on a failed home - aborts
+            # with the previous configuration untouched.
+            status = getattr(self.main_window.printer_model, 'printer_status', None)
+            if status != "Operational":
+                raise RuntimeError(
+                    f"printer is not idle after homing (state: {status or 'unknown'}). "
+                    "Nothing was changed - check the printer and try again."
+                )
+
             # 2. Swap the config
             manager = get_printer_config_manager()
             if not manager.set_extruder_mode(mode):
