@@ -1,0 +1,43 @@
+{
+  "env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python .claude/skills/penrose-printer/scripts/klippy_log.py:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/hybrid_check.py:*)",
+
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action status:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action temps:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action mode:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action job:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action connection:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action version:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action profile:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action files:*)",
+
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action logs:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action config:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action list:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action services:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action system:*)",
+
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(python --version)",
+      "Bash(python -m py_compile:*)"
+    ],
+    "ask": [
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action gcode:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action cancel:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action pause:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_api.py --action resume:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action exec:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action restart:*)",
+      "Bash(python .claude/skills/penrose-printer/scripts/printer_ssh.py --action backup:*)"
+    ]
+  }
+}
