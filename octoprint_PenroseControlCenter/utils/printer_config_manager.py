@@ -694,6 +694,14 @@ class PrinterConfigManager:
                 logger.error("printer.cfg not found - cannot switch extruder mode")
                 return False
 
+            # The machine's CURRENT Z zero, read before anything is rewritten.
+            # Used only as the fallback for a mode that has nothing stored -
+            # see the note at _seed_probe_z_offset. Without it, the first
+            # switch after [probe] became per-mode replaces one head's
+            # calibrated value with the hardcoded seed, and which head that
+            # is depends on the mode the machine happened to be in.
+            live_probe_z = self._read_live_probe_z_offset()
+
             # 1. File away the calibration belonging to the mode we are
             #    leaving, BEFORE the block gets rewritten.
             self.store_mode_calibration(previous)
@@ -762,7 +770,7 @@ class PrinterConfigManager:
             content = self._sync_toolhead_mcu_for_mode(content, mode)
 
             # 5. Klipper refuses to start without [probe] z_offset.
-            content = self._seed_probe_z_offset(content)
+            content = self._seed_probe_z_offset(content, seed=live_probe_z)
 
             with open(self.printer_cfg_path, 'w', encoding='utf-8') as f:
                 f.write(content)
@@ -1159,21 +1167,55 @@ class PrinterConfigManager:
         "#*#"
     )
 
-    def _seed_probe_z_offset(self, content: str) -> str:
+    def _read_live_probe_z_offset(self) -> Optional[str]:
+        """The [probe] z_offset currently in the deployed printer.cfg, if any."""
+        try:
+            with open(self.printer_cfg_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            marker_pos = content.find(self.SAVE_CONFIG_MARKER)
+            if marker_pos == -1:
+                return None
+            in_probe = False
+            for line in content[marker_pos:].split('\n'):
+                stripped = line.strip()
+                if not stripped.startswith('#*#'):
+                    continue
+                # Loop, so a block still carrying the old welded
+                # '#*##*#' seam is read rather than skipped over.
+                while stripped.startswith('#*#'):
+                    stripped = stripped[3:].strip()
+                if stripped.startswith('['):
+                    in_probe = (stripped == '[probe]')
+                elif in_probe and stripped.startswith('z_offset'):
+                    return stripped.split('=', 1)[1].strip()
+            return None
+        except Exception as e:
+            logger.error(f"Error reading live probe z_offset: {e}")
+            return None
+
+    def _seed_probe_z_offset(self, content: str, seed: str = None) -> str:
         """Ensure the SAVE_CONFIG block contains a [probe] z_offset entry.
 
         Handles three machine states:
         - SAVE_CONFIG block present with [probe] z_offset -> unchanged
         - SAVE_CONFIG block present without it -> entry inserted after the header
         - no SAVE_CONFIG block at all -> a minimal block is appended
+
+        Args:
+            content: the printer.cfg text
+            seed: value to insert when there is none. Defaults to
+                PROBE_Z_OFFSET_SEED; a mode switch passes the machine's live
+                value so a calibrated Z zero is carried across rather than
+                replaced by the hardcoded default.
         """
+        seed = seed or self.PROBE_Z_OFFSET_SEED
         try:
             marker_pos = content.find(self.SAVE_CONFIG_MARKER)
             if marker_pos == -1:
                 # No SAVE_CONFIG block at all (e.g. preserved MCU section
                 # truncated the template tail) - append a minimal one
                 content = (content.rstrip('\n') + "\n\n" + self.SAVE_CONFIG_HEADER +
-                           "\n#*# [probe]\n#*# z_offset = " + self.PROBE_Z_OFFSET_SEED + "\n")
+                           "\n#*# [probe]\n#*# z_offset = " + seed + "\n")
                 logger.info("Seeded new SAVE_CONFIG block with [probe] z_offset")
                 return content
 
@@ -1201,7 +1243,7 @@ class PrinterConfigManager:
                 insert_at += 1
             if insert_at < len(lines) and lines[insert_at].strip() == '#*#':
                 insert_at += 1
-            seed_lines = ['#*# [probe]', '#*# z_offset = ' + self.PROBE_Z_OFFSET_SEED, '#*#']
+            seed_lines = ['#*# [probe]', '#*# z_offset = ' + seed, '#*#']
             lines[insert_at:insert_at] = seed_lines
             logger.info("Seeded [probe] z_offset into existing SAVE_CONFIG block")
             return content[:marker_pos] + '\n'.join(lines)

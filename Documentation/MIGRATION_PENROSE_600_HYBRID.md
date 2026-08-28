@@ -216,12 +216,18 @@ cat ~/.octoprint/scripts/gcode/afterPrintDone   # H0 line GONE
 ### 7.2 Filament head Z zero  ⚠ required once, or the first layer is wrong
 
 The bed probe is triggered by the pellet nozzle only, so the filament head's
-`[probe] z_offset` cannot be measured — it is **seeded with −0.575 and set by
-hand**. Until you do, the filament head prints at whatever the seed happens
-to be, which is the "filament prints too high" complaint.
+`[probe] z_offset` cannot be measured — it is **set by hand**. Until you do,
+the filament head prints at the pellet head's height, which is the "filament
+prints too high" complaint.
 
 Each head's `z_offset` is stored in `/home/pi/.penrose/saveconfig_<mode>.cfg`
 and restored with the mode, so this is once per head, not once per switch.
+
+On a machine updating from the shared-`[probe]` layout, **both** heads
+inherit the existing calibrated value on the first switch, so nothing is
+lost and the machine keeps printing exactly as it did. That makes this step
+a correction rather than a rescue — but it is still required, because the
+filament nozzle does not sit at the pellet nozzle's height.
 
 - [ ] In **filament mode**, run `Z_ZERO_CALIBRATE` (Calibrate → Z Zero
       Calibrate). It homes, clears the mesh and parks the nozzle at the

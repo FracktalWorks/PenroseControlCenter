@@ -213,9 +213,19 @@ configparser rejects the rebuilt block. `hybrid_check.py` flags both.
 
 `[probe] z_offset` is per nozzle: the pellet value is measured by the bed
 probe (only the pellet nozzle triggers the load cells), while the filament
-value is seeded with `-0.575` and set manually via `M851` — the TD-01
-cannot auto-probe. A missing value in either mode's store is re-seeded so
-Klipper always boots.
+value is set manually via `M851` — the TD-01 cannot auto-probe. A missing
+value in either mode's store is re-seeded so Klipper always boots.
+
+**Migrating from the shared-`[probe]` layout:** before this change there was
+one shared `z_offset`. On the first switch afterwards the outgoing mode files
+it away and the incoming mode has nothing stored — so `set_extruder_mode`
+passes the machine's **live** value as the seed rather than the hardcoded
+`-0.575`. Both heads therefore start from what the machine already had, which
+is exactly the pre-update behaviour, and the filament head is zeroed once at
+leisure. Without that, which head lost its calibration would have depended on
+the mode the machine happened to be in when it updated — and updating while
+in filament mode would have seeded the *pellet* head, the one that is
+actually probe-calibrated.
 
 First switch into a mode with nothing stored keeps the shared data and drops
 the other head's PID — **re-run `PID_CALIBRATE HEATER=extruder` once per
