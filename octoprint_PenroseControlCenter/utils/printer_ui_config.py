@@ -137,7 +137,8 @@ MODE_HIDDEN_ELEMENTS = {
         # case - nozzle rows plus the H0 barrel rows.
         'home_screen': [],
         'control_screen': [],
-        'filament_management_screen': []
+        'filament_management_screen': [],
+        'calibrate_screen': []
     },
     'filament': {
         'home_screen': [
@@ -151,7 +152,20 @@ MODE_HIDDEN_ELEMENTS = {
             # spinbox, set button and both preheat buttons in one go
             'horizontalLayoutWidget_H0'
         ],
-        'filament_management_screen': []
+        'filament_management_screen': [],
+        'calibrate_screen': [
+            # SAFETY: the Z Probe Offset wizard runs PROBE_ACCURACY, and
+            # only the PELLET nozzle triggers the bed probe. Run it on the
+            # filament head and the TD-01 descends with nothing to stop it
+            # until Z hits position_min (-5mm), i.e. 5mm into the bed.
+            #
+            # Nothing is lost by hiding it: the Nozzle Offset page (M851)
+            # sets this head's Z zero without probing, and Z_ZERO_CALIBRATE
+            # gives the guided paper touch-off. The bed levelling wizard
+            # stays visible - it is a manual bed-screw flow that jogs to
+            # Z=0 with the active nozzle and never probes.
+            'zProbeOffsetWizardButton'
+        ]
     }
 }
 
@@ -330,6 +344,40 @@ def apply_extruder_mode_to_all_screens(main_window):
                 except Exception as e:
                     logger.error(f"Error in {screen_name}.on_extruder_mode_applied: {e}")
     logger.info(f"Applied extruder mode '{mode}' to screens: {sorted(screen_names)}")
+
+def configure_calibration_buttons_for_hybrid(widget):
+    """Re-purpose the Tool Z Offset button as the probe-free Z zero touch-off.
+
+    DUAL_NOZZLE_ELEMENTS hides that button on this machine, and rightly:
+    the wizard behind it drives T0/T1 and PROBE_ACCURACY, and the
+    config-swap model has no second tool - nor a probe the filament head
+    can trigger.
+
+    But the per-head Z zero still has to be reachable from the
+    touchscreen. Only the pellet nozzle triggers the bed probe, so the
+    filament head can only be zeroed by hand, and an operator with no
+    route to it is exactly how a machine ends up printing too high off
+    the bed. This button is already in the layout with the right icon and
+    the right name, so on a hybrid it comes back, relabelled;
+    calibrate_screen routes the click to Z_ZERO_CALIBRATE.
+
+    Args:
+        widget: the calibrate screen
+    """
+    if not is_hybrid_printer():
+        return
+    button = getattr(widget, 'toolZOffsetWizardButton', None)
+    if button is None:
+        button = widget.findChild(QWidget, 'ToolZOffsetWizardButton')
+    if button is None:
+        logger.debug("No Tool Z Offset button to re-purpose")
+        return
+    try:
+        button.setText("Z Zero\nCalibrate")
+        button.show()
+        logger.debug("Tool Z Offset button re-purposed as Z Zero Calibrate")
+    except Exception as e:
+        logger.error(f"Error configuring the Z zero button: {e}")
 
 def configure_sensor_toggles_for_hybrid(widget):
     """
@@ -533,6 +581,8 @@ def apply_nozzle_config_to_screen(widget, screen_name):
         configure_sensor_toggles_for_hybrid(widget)
     elif screen_name == 'filament_management_screen':
         configure_material_bay_for_hybrid(widget)
+    elif screen_name == 'calibrate_screen':
+        configure_calibration_buttons_for_hybrid(widget)
 
 def apply_nozzle_config_to_all_screens(main_window):
     """

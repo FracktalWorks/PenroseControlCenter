@@ -270,6 +270,11 @@ class ZProbeOffsetWizard(QWidget):
             
             # Home all axes for consistent starting position
             self.octoprint_client.home(['x', 'y', 'z'])
+            # Mesh OFF, and it has to be AFTER the home: on the Hybrid,
+            # homing_override re-loads the stored mesh at the end of every
+            # G28. Probing through mesh compensation would fold the bed's
+            # local deviation into the measured probe offset.
+            self.octoprint_client.gcode(command='M420 S0')
             self.octoprint_client.jog(x=0, y=0, z=5, absolute=True, speed=9000)  # Raise Z slightly
             
         except Exception as e:

@@ -213,6 +213,33 @@ cat ~/.octoprint/scripts/gcode/afterPrintDone   # H0 line GONE
       the bed origin. It must land where the pellet head would print it.
 - [ ] If displaced, correct with `SET_HEAD_OFFSET X=… Y=… Z=…` and reprint.
 
+### 7.2 Filament head Z zero  ⚠ required once, or the first layer is wrong
+
+The bed probe is triggered by the pellet nozzle only, so the filament head's
+`[probe] z_offset` cannot be measured — it is **seeded with −0.575 and set by
+hand**. Until you do, the filament head prints at whatever the seed happens
+to be, which is the "filament prints too high" complaint.
+
+Each head's `z_offset` is stored in `/home/pi/.penrose/saveconfig_<mode>.cfg`
+and restored with the mode, so this is once per head, not once per switch.
+
+- [ ] In **filament mode**, run `Z_ZERO_CALIBRATE` (Calibrate → Z Zero
+      Calibrate). It homes, clears the mesh and parks the nozzle at the
+      current Z=0 over bed centre.
+- [ ] Slide a sheet of paper under the nozzle. Use the Control screen's
+      **Z ± buttons** until it just drags. Each press folds into this mode's
+      `z_offset`; the save lands 5 s after you stop pressing.
+- [ ] `M420 S1` to put the mesh back, then `G28`.
+- [ ] `QUERY_HEAD_OFFSET` — the active-mode line must show a `z_offset` you
+      recognise, and it must differ from the pellet head's.
+- [ ] Print a single-layer patch. Adjust with the same Z ± buttons if needed.
+- [ ] Repeat the whole check in **pellet mode**. Its `z_offset` is separate;
+      `M851`/`M290` there need a Klipper restart to take effect, being a
+      config value rather than a saved variable.
+
+⚠ **Re-levelling pellet does not carry to filament.** After any pellet
+re-zero, re-check the filament first layer.
+
 ## 8. Calibrate filament mode
 
 Its PID is *not* inherited — the split is deliberate.
@@ -233,10 +260,20 @@ This is what proves per-mode storage works.
       the filament one.
 - [ ] Confirm `[bed_mesh p1]` still present.
 - [ ] Switch back to **filament**. PID must be the filament value again.
-- [ ] Repeat once more each way.
+- [ ] Repeat once more each way. **Do at least two full round trips** — the
+      seam bug fixed in this release only bit from the *second* switch on.
+- [ ] `grep -c '#\*##\*#' ~/printer.cfg` must print `0`. Anything else means
+      the block is being welded together and per-mode data is being lost.
+- [ ] `grep -c '#\*# \[probe\]' ~/printer.cfg` must print `1`. Two `[probe]`
+      sections stop Klipper from starting.
+- [ ] Z survives too: `QUERY_HEAD_OFFSET` in each mode must report the same
+      pellet reference and the same filament delta every time.
 
 **If PID values swap or vanish, stop** — the SAVE_CONFIG split is
 misbehaving and every switch is destroying calibration.
+
+`python .claude/skills/penrose-printer/scripts/hybrid_check.py` checks all of
+the above against the live machine in one pass.
 
 ## 10. Print validation
 

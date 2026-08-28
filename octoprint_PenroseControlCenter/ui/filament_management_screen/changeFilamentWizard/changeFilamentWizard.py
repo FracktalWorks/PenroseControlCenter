@@ -240,11 +240,18 @@ class ChangeFilamentWizard(QWidget):
             if self.changeFilamentComboBox.findText(LOADED_FILAMENT_LABEL) == -1:
                 self._set_tool_temperature()
             self.stackedWidget.setCurrentWidget(self.changeFilamentProgressPage)
+            # Disconnect first: without this, navigating back to the
+            # landing page and tapping Load/Unload again stacks a second
+            # connection and updateTemperature runs twice per update.
+            self._disconnect_temperature_signal()
             self.model.temperatures_updated.connect(self.updateTemperature)
             self.changeFilamentStatus.setText(f"Heating Tool {self.activeExtruder}, Please Wait...")
             self.changeFilamentNameOperation.setText(f"Loading {self.changeFilamentComboBox.currentText()}")
-            self.changeFilamentHeatingFlag = True
+            # loadFlag BEFORE heatingFlag: the other order leaves a window
+            # where a temperature update fires with loadFlag still None and
+            # updateTemperature retracts during what is meant to be a load.
             self.loadFlag = True
+            self.changeFilamentHeatingFlag = True
         except Exception as e:
             # On error, ensure no persistence happens if user taps Done
             self.loadFlag = None
@@ -260,11 +267,16 @@ class ChangeFilamentWizard(QWidget):
             if self.changeFilamentComboBox.findText(LOADED_FILAMENT_LABEL) == -1:
                 self._set_tool_temperature()
             self.stackedWidget.setCurrentWidget(self.changeFilamentProgressPage)
+            # Disconnect first: without this, navigating back to the
+            # landing page and tapping Load/Unload again stacks a second
+            # connection and updateTemperature runs twice per update.
+            self._disconnect_temperature_signal()
             self.model.temperatures_updated.connect(self.updateTemperature)
             self.changeFilamentStatus.setText(f"Heating Tool {self.activeExtruder}, Please Wait...")
             self.changeFilamentNameOperation.setText(f"Unloading {self.changeFilamentComboBox.currentText()}")
-            self.changeFilamentHeatingFlag = True
+            # See the note in loadFilament - same ordering requirement.
             self.loadFlag = False
+            self.changeFilamentHeatingFlag = True
         except Exception as e:
             # On error, ensure no persistence happens if user taps Done
             self.loadFlag = None

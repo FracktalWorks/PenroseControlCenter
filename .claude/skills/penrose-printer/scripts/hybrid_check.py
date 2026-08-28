@@ -111,6 +111,21 @@ def check_calibration(client, f: Findings, mode: str | None) -> None:
           ", ".join(sections) or "none",
           "Without it Klipper will not start: \"Option 'z_offset' in section 'probe' must be specified\".")
 
+    # A plugin older than the fix welded the block header onto the first
+    # section - '#*##*# [probe]' - which cost the machine its per-mode
+    # calibration on the NEXT switch and left duplicate sections behind.
+    welded = "#*##*#" in tail or "#*# #*#" in tail
+    f.add("calibration", not welded, "SAVE_CONFIG block is well formed",
+          "MANGLED - welded '#*##*#' seam found" if welded else "clean",
+          "Caused by a compose bug in older plugin builds. Update the plugin and switch modes "
+          "once: the parser now strips repeated prefixes and heals the block. Until then every "
+          "switch silently drops the extruder PID.")
+
+    dupes = sorted({x for x in sections if sections.count(x) > 1})
+    f.add("calibration", not dupes, "no duplicated SAVE_CONFIG sections",
+          ", ".join(dupes) if dupes else "none",
+          "Two sections with the same name stop Klipper starting. Same cause and same fix as above.")
+
     has_mesh = any(s.startswith("bed_mesh") for s in sections)
     f.add("calibration", has_mesh, "bed mesh profile saved",
           "present" if has_mesh else "none",
@@ -194,6 +209,84 @@ def check_offsets(client, f: Findings, mode: str | None) -> None:
               "set" if nonzero else "all zero",
               "All-zero is only right if the two heads are mounted identically. Otherwise every "
               "filament print lands shifted. Set with SET_HEAD_OFFSET.")
+
+    check_z_zero(client, f, mode, vals, var)
+
+
+def check_z_zero(client, f: Findings, mode: str | None, vals: dict, var: str) -> None:
+    """The per-head Z zero - the "filament prints too high" failure.
+
+    Only the pellet nozzle triggers the bed probe, and the two nozzle tips do
+    not hang the same distance below the gantry, so each head keeps its OWN
+    [probe] z_offset in /home/pi/.penrose/saveconfig_<mode>.cfg. Shared
+    across modes: the Z endstop (a gantry property) and the bed mesh (bed
+    shape, pellet-probed).
+
+    Two things go wrong here:
+      - the head has never been zeroed and still carries the seeded default
+      - z_offset is per mode but _APPLY_HEAD_OFFSET still adds tool_offset_z,
+        so an IDEX-migrated machine is corrected twice
+    """
+    cfg = ssh_read_file(client, setting("PENROSE_PRINTER_CFG")) or ""
+    m = re.search(r"^#\*#\s*z_offset\s*=\s*(-?[\d.]+)", cfg, re.M)
+    probe_z = float(m.group(1)) if m else None
+    tool_z = float(vals.get("tool_offset_z", 0) or 0)
+
+    if probe_z is None:
+        f.add("z-zero", None, "active mode Z zero", "no probe z_offset to read")
+    else:
+        f.add("z-zero", True, f"Z zero for the active ({mode or '?'}) head",
+              f"probe z_offset {probe_z}")
+
+    # Is the split actually per-mode on this machine, or an older plugin?
+    state_dir = setting("PENROSE_MODE_STATE_DIR")
+    code, out, _ = ssh_run(client, f"grep -l '\\[probe\\]' {state_dir}/*.cfg 2>/dev/null")
+    stored = [x.strip().rsplit("/", 1)[-1] for x in out.splitlines() if x.strip()] if code == 0 else []
+    per_mode_files = [x for x in stored if "shared" not in x]
+    shared_files = [x for x in stored if "shared" in x]
+    if stored:
+        f.add("z-zero", not shared_files, "[probe] is stored per mode, not shared",
+              ", ".join(stored),
+              "z_offset in the SHARED file means both heads fight over one Z zero: tuning the "
+              "filament first layer shifts pellet mode with it. Update the plugin - [probe] "
+              "belongs in PER_MODE_SAVE_CONFIG_PREFIXES.")
+        if mode:
+            other = "filament" if mode == "pellet" else "pellet"
+            have_other = any(other in x for x in per_mode_files)
+            f.add("z-zero", have_other or None, f"'{other}' head has a stored Z zero",
+                  "yes" if have_other else "not yet",
+                  f"Written when you switch away from {other} mode. Until then that head falls "
+                  "back to the seeded default and will print at the wrong height.")
+    else:
+        f.add("z-zero", None, "per-mode Z zero store", f"nothing in {state_dir}",
+              "Populated on the first mode switch. Empty is normal before one has happened.")
+
+    # Double correction: per-mode z_offset AND a head Z offset on top.
+    base = ssh_read_file(client, "/home/pi/BASE_PENROSE_HYBRID.cfg") or ""
+    applies_tool_z = bool(re.search(r"_APPLY_HEAD_OFFSET.*?tool_offset_z", base, re.S | re.I)) \
+        and "tool_offset_z" in base.split("_APPLY_HEAD_OFFSET")[-1][:1200]
+    if abs(tool_z) > 1e-9:
+        f.add("z-zero", not applies_tool_z, "no double Z correction",
+              f"tool_offset_z = {tool_z}" + (" AND still applied" if applies_tool_z else " stored but not applied"),
+              "With [probe] per mode, Z is entirely the active mode's z_offset. Applying "
+              "tool_offset_z in _APPLY_HEAD_OFFSET as well corrects an IDEX-migrated machine "
+              "twice. Update BASE_PENROSE_HYBRID.cfg (v7+).")
+
+    # The touchscreen Z +/- buttons send M290.
+    core = ssh_read_file(client, "/home/pi/CORE_GCODE_MACROS.cfg") or ""
+    m290 = core.split("[gcode_macro M290]")[-1][:2500]
+    debounced = "UPDATE_DELAYED_GCODE ID=_SAVE_Z_OFFSET" in m290
+    pellet_only = "is_pellet" in m290
+    f.add("z-zero", debounced, "M290 debounces its SAVE_CONFIG",
+          "yes" if debounced else "NO - writes printer.cfg on every press",
+          "Each press rewrote the whole of printer.cfg; 318 of them were recorded on .176. "
+          "Update the firmware configs (CORE_GCODE_MACROS v4+).")
+    if pellet_only and mode == "filament":
+        f.add("z-zero", None, "Z +/- buttons work in filament mode", "disabled by an older M290 guard",
+              "An intermediate build gated the probe fold to pellet mode, which stopped the "
+              "contamination but left filament Z settable only via M851. With per-mode "
+              "z_offset the fold is correct on either head.")
+
 
 
 def check_carriage(client, f: Findings, mode: str | None) -> None:

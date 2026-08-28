@@ -91,6 +91,26 @@ Failure modes that follow from this, and which `hybrid_check.py` tests:
 - **Head offset missing in filament mode** → every filament print lands
   shifted by the head mounting offset. `_APPLY_HEAD_OFFSET` applies it at
   boot and after every home; `SET_HEAD_OFFSET` sets it.
+- **"Filament prints too high off the bed"** → that head's `[probe] z_offset`
+  has never been set and still carries the seeded −0.575. `z_offset` is
+  **per mode** (`/home/pi/.penrose/saveconfig_<mode>.cfg`); the Z endstop and
+  the bed mesh are shared. Only the pellet nozzle triggers the probe, so the
+  filament value is set by hand: `Z_ZERO_CALIBRATE` then the Control screen
+  Z ± buttons, or `M851`. `QUERY_HEAD_OFFSET` reports the active mode's.
+- **Tuning one head's first layer moves the other** → `[probe]` is still in
+  the SHARED half of the split (plugin older than the per-mode change), or
+  `CORE_GCODE_MACROS` is older than v4. Check with `hybrid_check.py`.
+- **Z is off by exactly the old IDEX head offset** → `_APPLY_HEAD_OFFSET`
+  still adds `tool_offset_z` while `[probe]` is per mode, so an
+  IDEX-migrated machine is corrected twice. Needs
+  `BASE_PENROSE_HYBRID.cfg` v7+, where Z drops out of the head offset.
+- **printer.cfg rewritten hundreds of times** → `M290` saving on every
+  0.025 mm press (318 recorded on `.176`). v4+ debounces it into
+  `[delayed_gcode _SAVE_Z_OFFSET]`, 5 s after the last press.
+- **Per-mode calibration vanishes on the second switch** → `printer.cfg`
+  contains a welded `#*##*#` seam and duplicate `[probe]` sections, from a
+  compose bug in older plugin builds. Update the plugin and switch once; the
+  parser now heals the block. Duplicate sections also stop Klipper starting.
 - **Cooldown script keeps the barrel hot** → `afterPrintDone` must
   contain `M104 H0 S0` in pellet mode and must *not* in filament mode
   (it errors there).

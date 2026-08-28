@@ -110,6 +110,48 @@ The old IDEX XY/camera calibration wizards used `M605` COPY/MIRROR and are
 hidden on this machine — measure by printing a single-wall square in each
 mode and comparing displacement.
 
+**`tool_offset_z` is stored but no longer applied.** Z belongs entirely to
+the active mode's `[probe] z_offset` (below); adding the head offset in Z as
+well would correct an IDEX-migrated machine twice. `SET_HEAD_OFFSET Z=` says
+so and points at `M851`.
+
+### Z zero is per head
+
+The two nozzle tips do not hang the same distance below the gantry, and only
+the pellet nozzle triggers the bed probe. So:
+
+| | Where | Scope |
+|---|---|---|
+| `[stepper_z] position_endstop` | SKU config (618) | **shared** — a gantry property |
+| `[bed_mesh p1]` | `SAVE_CONFIG` | **shared** — bed shape, pellet-probed |
+| `[probe] z_offset` | `SAVE_CONFIG` | **per mode** — one per nozzle |
+
+Sign convention: a **larger** `z_offset` puts the nozzle **closer** to the
+bed, as does a negative gcode Z offset.
+
+The pellet value is measured by the probe. The filament value cannot be, so
+it is set by hand, three ways — all landing in the active mode's own
+`z_offset`:
+
+| Route | Sends |
+|---|---|
+| Control screen **Z ±** buttons | `M290 Z±0.025` |
+| Calibrate → **Nozzle Offset** | `M851 Z<value>` |
+| Calibrate → **Z Zero Calibrate** | `Z_ZERO_CALIBRATE` — homes, clears the mesh, parks the active nozzle at Z=0 over bed centre for a paper touch-off |
+
+`M290` folds each press into `[probe] z_offset` via `Z_OFFSET_APPLY_PROBE`,
+then arms a 5 s `[delayed_gcode _SAVE_Z_OFFSET]`. **The save is debounced on
+purpose**: `SAVE_CONFIG` rewrites the whole of `printer.cfg`, and one write
+per 0.025 mm press is how 318 of them were recorded on `.176`.
+
+Before `[probe]` was per-mode, that fold was a bug: its guard
+(`printer.toolhead.extruder == "extruder"`) meant "we are on T0" under IDEX
+but is always true here, so filament babysteps drifted the *shared* pellet
+reference. Per-mode storage is what makes it correct again on either head.
+
+**Re-levelling in pellet mode does not carry to filament.** The two zeros are
+independent, so re-check the filament first layer after any pellet re-zero.
+
 ## Bed levelling
 
 **`G29` works in pellet mode only** — only the pellet nozzle triggers the
@@ -121,9 +163,28 @@ The mesh is stored as profile `p1` and is **shared between modes**: it lives
 in the shared half of the `SAVE_CONFIG` block (below) and `M420 S1` in
 `CORE_GCODE_MACROS.cfg` loads it in either mode. The mesh describes the bed,
 which does not change; the filament nozzle's different height is handled by
-`tool_offset_z`.
+its own `[probe] z_offset`.
 
 **Level in pellet mode.**
+
+`homing_override` clears the mesh (homing and probing must not be
+mesh-corrected) and **re-loads it with `M420 S1` at the end**, so a plain
+`G28` no longer silently drops bed compensation until something calls `G29`.
+Anything that must not run mesh-corrected therefore issues `M420 S0`
+*after* homing, not before — `SCREW_ADJUST`, the bed-levelling wizard and
+the Z Probe Offset wizard all do.
+
+Manual **bed-screw levelling works in both modes** — the wizard jogs the
+active nozzle to Z=0 over each screw and never probes. Only the *probed
+mesh* is pellet-only. The Z Probe Offset wizard (`PROBE_ACCURACY`) is hidden
+in filament mode: run it there and the TD-01 descends with nothing to
+trigger the probe, all the way to `position_min` = −5 mm.
+
+### Do I have to re-level after switching?
+
+**No.** The mesh is bed geometry and is shared, and each head's Z zero is
+filed away and restored with the mode. Level in pellet mode when the bed
+changes, and zero each head once. After that a switch needs only a home.
 
 ## Per-mode calibration (`SAVE_CONFIG`)
 
@@ -138,6 +199,17 @@ values. The plugin therefore splits the `SAVE_CONFIG` block on every switch:
 
 Files live in `/home/pi/.penrose/`. Default-to-shared is deliberate: an
 unanticipated section is preserved rather than silently dropped.
+
+`compose_save_config_block` re-assembles the halves under the `SAVE_CONFIG`
+header. **It used to join them with no newline**, welding the header's
+trailing bare `#*#` onto the first section as `#*##*# [probe]`. The parser
+read that as a content line, so from the *second* switch onward the block
+parsed as empty: every per-mode value was silently dropped and
+`_seed_probe_z_offset` appended a duplicate `[probe]`, which stops Klipper
+starting. The parser now strips repeated `#*#` prefixes so a machine already
+mangled in the field heals on its next switch — and it **preserves the body's
+indentation**, which `[bed_mesh] points =` continuation rows need or
+configparser rejects the rebuilt block. `hybrid_check.py` flags both.
 
 `[probe] z_offset` is per nozzle: the pellet value is measured by the bed
 probe (only the pellet nozzle triggers the load cells), while the filament

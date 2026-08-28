@@ -390,10 +390,27 @@ class filamentManagementScreen(QWidget):
                 progress.hide()
                 progress.deleteLater()
                 progress = None
+            # The two nozzle tips do not sit at the same height, and only
+            # the pellet nozzle can probe the bed - so each head keeps its
+            # OWN [probe] z_offset, filed away and restored with the mode.
+            # A head that has never been zeroed carries the seeded default
+            # and prints at the wrong height, and re-levelling in pellet
+            # mode does not carry across either. Both are worth one line
+            # here rather than being found mid-print. There is no reliable
+            # flag to test - the seed is itself a plausible real value - so
+            # this is said on every switch into filament mode.
+            z_zero_note = ""
+            if mode == 'filament':
+                z_zero_note = (
+                    "\n\nCheck the first layer: each extruder keeps its "
+                    "own height. If it prints too high or digs in, run the Z "
+                    "zero touch-off (Calibrate > Z Zero Calibrate) - it is "
+                    "remembered for this extruder."
+                )
             dialog.WarningOk(
                 self,
                 f"Now configured as a {display_name} printer.\n\n"
-                "Home the machine before printing.",
+                "Home the machine before printing." + z_zero_note,
                 overlay=True,
             )
         except Exception as e:

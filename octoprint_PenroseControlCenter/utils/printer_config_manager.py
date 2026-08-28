@@ -1230,43 +1230,64 @@ class PrinterConfigManager:
                     with open(dest_path, 'r') as f:
                         existing_content = f.read()
                     
-                    # Extract MCU Config section
-                    mcu_start_marker = "########################################\n# MCU Config\n########################################"
+                    # Extract MCU Config section.
+                    #
+                    # Match only the FIRST TWO lines of the header. The
+                    # three-line form used to be required, which broke the
+                    # moment a comment was added between "# MCU Config" and
+                    # the closing hash-line: the marker missed, nothing was
+                    # preserved, and the template's placeholder serial: /
+                    # canbus_uuid was written over the machine's real one -
+                    # leaving it unable to reach its MCU at all.
+                    # (Carried over from the Hybrid-Penrose-600 branch.)
+                    mcu_start_marker = "########################################\n# MCU Config"
                     save_config_marker = "#*# <---------------------- SAVE_CONFIG ---------------------->"
-                    
+
                     logger.debug(f"Looking for MCU marker in existing file...")
                     logger.debug(f"MCU marker found: {mcu_start_marker in existing_content}")
                     logger.debug(f"SAVE_CONFIG marker found: {save_config_marker in existing_content}")
-                    
-                    if mcu_start_marker in existing_content:
-                        mcu_start = existing_content.find(mcu_start_marker)
-                        logger.debug(f"MCU marker position: {mcu_start}")
-                        
-                        if save_config_marker in existing_content:
-                            save_config_start = existing_content.find(save_config_marker)
-                            logger.debug(f"SAVE_CONFIG marker position: {save_config_start}")
-                            
-                            if mcu_start != -1 and save_config_start != -1 and mcu_start < save_config_start:
-                                # Extract MCU section (from MCU Config marker to just before SAVE_CONFIG marker)
-                                existing_mcu_section = existing_content[mcu_start:save_config_start].rstrip()
-                                logger.info(f"Preserved MCU config section ({len(existing_mcu_section)} chars)")
+
+                    save_config_start = existing_content.find(save_config_marker)
+                    mcu_start = existing_content.find(mcu_start_marker)
+
+                    if mcu_start == -1:
+                        # Fallback for deployments predating the header: find
+                        # [mcu] itself, and take the comment block immediately
+                        # above it if there is one close by.
+                        mcu_direct = existing_content.find('\n[mcu]\n')
+                        if mcu_direct != -1:
+                            last_hash = existing_content[:mcu_direct].rfind(
+                                '########################################')
+                            if last_hash != -1 and (mcu_direct - last_hash) < 600:
+                                mcu_start = last_hash
                             else:
-                                # If SAVE_CONFIG comes before MCU (unusual), extract MCU to end
-                                existing_mcu_section = existing_content[mcu_start:].rstrip()
-                                logger.warning("SAVE_CONFIG found before MCU marker, extracting MCU to end of file")
+                                mcu_start = mcu_direct + 1  # start at [mcu] itself
+                            logger.warning(
+                                "MCU Config header not found; falling back to the "
+                                f"[mcu] section at position {mcu_start}")
                         else:
-                            # No SAVE_CONFIG marker, extract MCU section to end of file
+                            logger.warning("Could not locate an [mcu] section in the existing file")
+
+                    if mcu_start != -1:
+                        logger.debug(f"MCU section starts at {mcu_start}")
+                        if save_config_start != -1 and mcu_start < save_config_start:
+                            # MCU Config marker up to just before SAVE_CONFIG
+                            existing_mcu_section = existing_content[mcu_start:save_config_start].rstrip()
+                            logger.info(f"Preserved MCU config section ({len(existing_mcu_section)} chars)")
+                        else:
                             existing_mcu_section = existing_content[mcu_start:].rstrip()
-                            logger.info(f"No SAVE_CONFIG found, preserved MCU config to end ({len(existing_mcu_section)} chars)")
-                            
-                        # Extract SAVE_CONFIG section separately (everything from SAVE_CONFIG marker to end)
-                        if save_config_marker in existing_content:
-                            save_config_start = existing_content.find(save_config_marker)
                             if save_config_start != -1:
-                                existing_save_config_section = existing_content[save_config_start:].rstrip()
-                                logger.info(f"Preserved SAVE_CONFIG section ({len(existing_save_config_section)} chars)")
-                    else:
-                        logger.warning("MCU Config marker not found in existing file")
+                                logger.warning("SAVE_CONFIG found before MCU marker, extracting MCU to end of file")
+                            else:
+                                logger.info(f"No SAVE_CONFIG found, preserved MCU config to end ({len(existing_mcu_section)} chars)")
+
+                    # SAVE_CONFIG is preserved INDEPENDENTLY of the MCU block.
+                    # It used to be extracted inside the MCU branch above, so a
+                    # machine whose header did not match lost its probe
+                    # z_offset, bed mesh and PID along with its MCU serial.
+                    if save_config_start != -1:
+                        existing_save_config_section = existing_content[save_config_start:].rstrip()
+                        logger.info(f"Preserved SAVE_CONFIG section ({len(existing_save_config_section)} chars)")
                     
                 except Exception as e:
                     logger.warning(f"Could not extract existing MCU config and SAVE_CONFIG: {e}")
@@ -1316,7 +1337,8 @@ class PrinterConfigManager:
             # If we have preserved sections, replace the template sections with the existing ones
             if existing_mcu_section or existing_save_config_section:
                 logger.info("Replacing template sections with preserved ones")
-                mcu_start_marker = "########################################\n# MCU Config\n########################################"
+                # Two-line marker, matching the extraction above.
+                mcu_start_marker = "########################################\n# MCU Config"
                 save_config_marker = "#*# <---------------------- SAVE_CONFIG ---------------------->"
                 
                 if existing_mcu_section and mcu_start_marker in final_content:

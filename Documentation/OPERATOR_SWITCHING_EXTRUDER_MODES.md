@@ -72,6 +72,19 @@ touch off the bed sensor. Level in pellet mode — the result is saved and used
 automatically in filament mode too. A filament job that asks to level will
 skip it and use the saved result. That is normal.
 
+**You do not have to re-level every time you switch.** The bed shape is
+shared, and each extruder remembers its own height. Level when the bed
+changes, not when the mode changes.
+
+**Each extruder needs its first-layer height set once.** The two nozzles do
+not sit at the same height, so each one keeps its own. On a new machine, or
+if the first layer prints too high or digs in, do the paper test below. The
+printer remembers it from then on, through every switch.
+
+**But if you re-level, check both.** The two heights are independent, so
+after re-levelling in pellet mode, check the filament first layer as well
+and redo its paper test if it has moved.
+
 **Your sliced file has to match the mode.** Slice with the machine profile
 for the mode you are in. Start the wrong file and the printer cancels
 immediately, naming the mode the file expects. It will not print with the
@@ -93,7 +106,26 @@ switching never loses either.
 | "Printer is not idle after homing" | Something started while you were switching. Nothing was changed — check the printer and try again. |
 | A print cancels the moment it starts | The file was sliced for the other mode. Switch modes, or re-slice. |
 | Levelling skipped in filament mode | Expected — it uses the mesh saved from pellet mode. |
+| First layer too high, or squashed | That extruder's height has not been set. Do the paper test below. |
+| A message about the Z zero never being set | The filament extruder is new to this machine. Do the paper test below. |
 | Temperatures look wrong after switching | Check you are reading the right row: filament mode has no barrel heater, so that row disappears. |
+
+## Setting an extruder's first-layer height (the paper test)
+
+Once per extruder, per machine. Takes two minutes.
+
+1. Switch to the extruder you want to set, and make sure the bed is clear.
+2. On the touchscreen open **Calibrate**, and run **Z Zero Calibrate**. The
+   printer homes and brings the nozzle down to the bed at the centre.
+3. Slide a sheet of ordinary paper under the nozzle.
+4. Use the **Z − / Z +** buttons on the Control screen until the paper *just*
+   drags — you can still move it, but you feel it.
+   - Paper slides freely → nozzle too high → press **Z −**
+   - Paper will not move → nozzle too low → press **Z +**
+5. That is it. Every press is saved as you go. Home the printer and print.
+
+The setting belongs to that extruder alone. Switching to the other one and
+back does not disturb it.
 
 > **While the printer is switching:** keep hands clear. The carriages move
 > during homing and parking, and the extruder you are leaving may stay hot

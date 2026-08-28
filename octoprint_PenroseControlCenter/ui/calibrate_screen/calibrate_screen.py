@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QWidget, QToolButton, QPushButton, QStackedWidget
 from PyQt5 import uic
 from utils.helpers import check_ui_elements
 from utils.logger import get_logger
-from utils.printer_ui_config import apply_nozzle_config_to_screen
+from utils.printer_ui_config import apply_nozzle_config_to_screen, is_hybrid_printer
 from utils import dialog
 
 # Import all calibration sub-screens
@@ -75,7 +75,7 @@ class CalibrateScreen(QWidget):
         self.toolOffsetXYButton.clicked.connect(lambda: self.show_calibrate_screen("tool_offset", tab="XY"))
         self.idexCalibrationWizardButton.clicked.connect(lambda: self.show_calibrate_screen("idex_calibration"))
         if self.toolZOffsetWizardButton:
-            self.toolZOffsetWizardButton.clicked.connect(lambda: self.show_calibrate_screen("z_tool_offset"))
+            self.toolZOffsetWizardButton.clicked.connect(self.on_tool_z_offset_clicked)
         if self.zProbeOffsetWizardButton:
             self.zProbeOffsetWizardButton.clicked.connect(lambda: self.show_calibrate_screen("z_probe_offset"))
         self.calibrateBackButton.clicked.connect(lambda: self.main_window.switch_to_menu_screen())
@@ -97,6 +97,48 @@ class CalibrateScreen(QWidget):
             self.on_klipper_state_changed(current_klipper_state)
         except Exception as e:
             self.logger.debug(f"Could not initialize Klipper state UI: {e}")
+
+    def on_tool_z_offset_clicked(self):
+        """Tool Z Offset button.
+
+        On a Hybrid this button is re-purposed as the probe-free Z zero
+        touch-off (see configure_calibration_buttons_for_hybrid). The
+        wizard it opens on other machines drives T0/T1 and
+        PROBE_ACCURACY: there is no T1 in the config-swap model, and only
+        the pellet nozzle triggers the bed probe - run it on the filament
+        head and the TD-01 descends until Z hits position_min, 5mm into
+        the bed.
+
+        Z_ZERO_CALIBRATE homes, clears the mesh and parks the ACTIVE
+        nozzle at the current Z=0 over bed centre. The operator finishes
+        with the Control screen's Z +/- buttons, which since
+        CORE_GCODE_MACROS v4 persist to the right store for the active
+        mode - so there is no separate save step.
+        """
+        if not is_hybrid_printer():
+            self.show_calibrate_screen("z_tool_offset")
+            return
+        try:
+            if not dialog.WarningYesNo(
+                self,
+                "Set the first-layer height for the extruder that is fitted?\n\n"
+                "The printer will home, then bring the nozzle down to the bed at the centre. Keep the bed clear."
+                "\n\nThen use the Z - / Z + buttons on the Control screen until a sheet of paper just drags under the nozzle. Every press is saved for this extruder automatically.",
+                overlay=True,
+            ):
+                return
+            self.logger.info("Running Z_ZERO_CALIBRATE for the active extruder mode")
+            self.octoprint_client.gcode(command='Z_ZERO_CALIBRATE')
+            dialog.InfoOk(
+                self,
+                "Homing, then moving to the centre of the bed."
+                "\n\nWhen the nozzle stops, slide paper under it and adjust with the Z - / Z + buttons on the Control screen until it just drags."
+                "\n\nHome the printer when you are done.",
+                overlay=True,
+            )
+        except Exception as e:
+            self.logger.error(f"Error starting Z_ZERO_CALIBRATE: {e}")
+            dialog.WarningOk(self, f"Could not start the Z zero touch-off: {e}", overlay=True)
 
     def apply_nozzle_configuration(self):
         """Hide dual nozzle elements for single nozzle configuration."""

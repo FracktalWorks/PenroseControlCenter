@@ -100,6 +100,11 @@ class BedLeveling(QWidget):
             self.octoprint_client.gcode(command='M420 S0')  # Disable mesh bed leveling for good measure
             self.stackedWidget.setCurrentWidget(self.quickStep1Page)
             self.octoprint_client.home(['x', 'y', 'z'])
+            # Again, and deliberately AFTER the home: on the Hybrid,
+            # homing_override re-loads the stored mesh at the end of every
+            # G28, which would otherwise put compensation back on and have
+            # the operator adjusting bed screws against a corrected Z.
+            self.octoprint_client.gcode(command='M420 S0')
             self.octoprint_client.gcode(command='T0')
             self.octoprint_client.jog(x=40, y=40, absolute=True, speed=2000)
         except Exception as e:
