@@ -178,6 +178,10 @@ Split the preserved block by origin, in `printer_config_manager`:
 /home/pi/.penrose/saveconfig_shared.cfg      shared:   [bed_mesh p1]
 ```
 
+Implemented: `PER_MODE_SAVE_CONFIG_PREFIXES` includes `'probe'`, so each
+mode stores its own `[probe] z_offset` (pellet = bed-probed, filament =
+seeded/manual `M851`). `[stepper_z]` remains shared.
+
 On every mode switch:
 
 1. Read the live `#*#` block out of `printer.cfg`.

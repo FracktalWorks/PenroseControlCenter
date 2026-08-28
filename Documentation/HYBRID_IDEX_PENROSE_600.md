@@ -133,11 +133,17 @@ values. The plugin therefore splits the `SAVE_CONFIG` block on every switch:
 
 | Stored | Sections | Why |
 |---|---|---|
-| **Per mode** | `[extruder]`, `[tmc2209]`, `[tmc5160]` | genuinely different hardware |
-| **Shared** | everything else — `[bed_mesh *]`, `[stepper_z]`, `[probe]` | properties of the machine, calibrated against the pellet head |
+| **Per mode** | `[extruder]`, `[tmc2209]`, `[tmc5160]`, `[probe]` | genuinely different hardware: PID per head, probe offset per nozzle |
+| **Shared** | everything else — `[bed_mesh *]`, `[stepper_z]` | properties of the machine |
 
 Files live in `/home/pi/.penrose/`. Default-to-shared is deliberate: an
 unanticipated section is preserved rather than silently dropped.
+
+`[probe] z_offset` is per nozzle: the pellet value is measured by the bed
+probe (only the pellet nozzle triggers the load cells), while the filament
+value is seeded with `-0.575` and set manually via `M851` — the TD-01
+cannot auto-probe. A missing value in either mode's store is re-seeded so
+Klipper always boots.
 
 First switch into a mode with nothing stored keeps the shared data and drops
 the other head's PID — **re-run `PID_CALIBRATE HEATER=extruder` once per

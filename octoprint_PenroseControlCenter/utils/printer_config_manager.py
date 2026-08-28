@@ -34,6 +34,50 @@ except ImportError:
                 "Please install it manually with: pip install PyYAML or sudo pip install PyYAML"
             ) from e
 
+# Some fleet images ship a broken 'yaml' package (all modules 0 bytes) in
+# /usr/local/lib/python3.7/dist-packages which shadows a real PyYAML
+# installed elsewhere. Import succeeds but safe_load/safe_dump are missing,
+# so every OctoPrint config update failed with:
+#   module 'yaml' has no attribute 'safe_load'
+# Detect that state, try to reinstall a real PyYAML over it, and fall back
+# to older-style loaders for any remaining gaps.
+if not hasattr(yaml, 'safe_load') or not hasattr(yaml, 'safe_dump'):
+    print("yaml module is incomplete - reinstalling PyYAML...")
+    for install_cmd in (
+        [sys.executable, '-m', 'pip', 'install', '--force-reinstall', '-U', 'PyYAML'],
+        ['sudo', sys.executable, '-m', 'pip', 'install', '--force-reinstall', '-U', 'PyYAML'],
+    ):
+        try:
+            subprocess.check_call(install_cmd)
+            break
+        except Exception:
+            continue
+    try:
+        import importlib
+        yaml = importlib.reload(yaml)
+    except Exception:
+        pass
+
+
+def _yaml_safe_load(f):
+    """yaml.safe_load with fallbacks for incomplete/old PyYAML installs."""
+    if hasattr(yaml, 'safe_load'):
+        return yaml.safe_load(f)
+    loader = getattr(yaml, 'SafeLoader', None)
+    if loader is not None:
+        return yaml.load(f, Loader=loader)
+    return yaml.load(f)
+
+
+def _yaml_safe_dump(data, f, **kwargs):
+    """yaml.safe_dump with fallbacks for incomplete/old PyYAML installs."""
+    if hasattr(yaml, 'safe_dump'):
+        return yaml.safe_dump(data, f, **kwargs)
+    dumper = getattr(yaml, 'SafeDumper', None)
+    if dumper is not None:
+        return yaml.dump(data, f, Dumper=dumper, **kwargs)
+    return yaml.dump(data, f, **kwargs)
+
 try:
     from packaging import version
 except ImportError:
@@ -98,20 +142,25 @@ MODE_STATE_DIR = '/home/pi/.penrose'
 # stored separately per mode. Everything else is a property of the machine
 # and is SHARED.
 #
-# Default-to-shared is deliberate. The only genuinely head-specific
-# calibration is the extruder heater's PID: a pellet auger on an AC band
-# heater and a TD-01 hotend need completely different values, and both
-# modes call that section literally "[extruder]".
+# Head-specific sections stored per mode:
+#   [extruder]    - heater PID. A pellet auger on an AC band heater and a
+#                   TD-01 hotend need completely different values, and
+#                   both modes call that section literally "[extruder]".
+#   [probe]       - z_offset, one per nozzle. The pellet value comes from
+#                   the bed probe (only the pellet nozzle triggers it); the
+#                   filament value is seeded with PROBE_Z_OFFSET_SEED and
+#                   set manually via M851 - the TD-01 cannot auto-probe.
+# Default-to-shared is deliberate beyond this list: anything not named is
+# preserved across modes rather than silently discarded.
 #
 # What must NOT be per-mode:
 #   [bed_mesh *]  - the bed's shape. Only the pellet nozzle triggers the
 #                   probe, so filament mode depends on inheriting it.
 #   [stepper_z]   - the Z endstop position, a gantry property.
-#   [probe]       - z_offset, calibrated against the pellet nozzle.
 # The filament nozzle's different height/position is corrected by
 # tool_offset_x/y/z applied as a gcode offset (_APPLY_HEAD_OFFSET),
 # exactly as the old IDEX config did - NOT by re-zeroing the machine.
-PER_MODE_SAVE_CONFIG_PREFIXES = ('extruder', 'tmc2209', 'tmc5160')
+PER_MODE_SAVE_CONFIG_PREFIXES = ('extruder', 'tmc2209', 'tmc5160', 'probe')
 
 # OctoPrint temperature presets for the Hybrid IDEX filament head. The
 # pellet presets are the ones shipped in the template config.yaml (the
@@ -493,16 +542,25 @@ class PrinterConfigManager:
         current_name = None
         current_lines: List[str] = []
         for raw in block.split('\n'):
-            stripped = raw.strip()
+            stripped = raw.lstrip()
             if not stripped.startswith('#*#'):
                 continue
-            body = stripped[3:].strip()
-            if body.startswith('[') and body.endswith(']'):
+            # Heal double-prefixed lines (#*##*# [probe]) left behind by
+            # the old compose bug, so a corrupted block parses again.
+            while stripped.startswith('#*#'):
+                stripped = stripped[3:].lstrip()
+            # Body keeps its original indentation relative to the '#*#'
+            # prefix: multi-line values like bed_mesh `points =` need the
+            # continuation rows to stay indented, or configparser rejects
+            # the rebuilt block at Klipper startup.
+            body = raw[raw.index('#*#') + 3:]
+            body_clean = body.strip()
+            if body_clean.startswith('[') and body_clean.endswith(']'):
                 if current_name is not None:
                     sections.append((current_name, current_lines))
-                current_name = body[1:-1].strip()
+                current_name = body_clean[1:-1].strip()
                 current_lines = []
-            elif current_name is not None and body:
+            elif current_name is not None and body_clean:
                 current_lines.append(body)
         if current_name is not None:
             sections.append((current_name, current_lines))
@@ -538,11 +596,18 @@ class PrinterConfigManager:
         return self._render_sections(shared), self._render_sections(per_mode)
 
     def compose_save_config_block(self, shared_text: str, per_mode_text: str) -> str:
-        """Rebuild a full SAVE_CONFIG block from its two halves."""
+        """Rebuild a full SAVE_CONFIG block from its two halves.
+
+        The header ends with a bare ``#*#`` line and no newline - the
+        separator below is load-bearing. Without it the first body line
+        concatenates into ``#*##*# [probe]``, which Klipper's save-config
+        parser cannot apply, the seeded probe offset is lost, and Klipper
+        halts on "Option 'z_offset' in section 'probe' must be specified".
+        """
         body = '\n'.join(part for part in (per_mode_text, shared_text) if part.strip())
         if not body.strip():
             return ''
-        return self.SAVE_CONFIG_HEADER + body + '\n'
+        return self.SAVE_CONFIG_HEADER + '\n' + body + '\n'
 
     def store_mode_calibration(self, mode: str) -> bool:
         """Split the live SAVE_CONFIG block and file it away for `mode`.
@@ -811,7 +876,7 @@ class PrinterConfigManager:
         try:
             source_config = os.path.join(self.config_path, 'config.yaml')
             with open(source_config, 'r') as f:
-                template = yaml.safe_load(f) or {}
+                template = _yaml_safe_load(f) or {}
             profiles = (template.get('temperature') or {}).get('profiles') or []
             return [dict(p) for p in profiles if isinstance(p, dict)]
         except Exception as e:
@@ -830,7 +895,7 @@ class PrinterConfigManager:
                 
             # Load the template config
             with open(source_config, 'r') as f:
-                config_data = yaml.safe_load(f)
+                config_data = _yaml_safe_load(f)
                 
             # Update appearance name with current printer
             if 'appearance' not in config_data:
@@ -857,7 +922,7 @@ class PrinterConfigManager:
             
             # Write updated config
             with open(dest_config, 'w') as f:
-                yaml.safe_dump(config_data, f, default_flow_style=False)
+                _yaml_safe_dump(config_data, f, default_flow_style=False)
                 
             logger.info(f"Updated OctoPrint config with printer: {printer_name}")
             return True
@@ -878,11 +943,26 @@ class PrinterConfigManager:
                 
             # Load the template profile
             with open(source_profile, 'r') as f:
-                profile_data = yaml.safe_load(f)
+                profile_data = _yaml_safe_load(f)
                 
             # Get printer configuration from Klipper variables
             printer_config = self.get_printer_config_from_variables(printer_name)
-            
+
+            # If the variables could not be parsed (deploy race while the
+            # PRINTER_*.cfg is being copied, truncated file, ...) the
+            # fallback config is the generic 200x200x200. Writing THAT into
+            # the profile makes OctoPrint's model-size check reject every
+            # real print ("Object exceeds print volume"). Keep the
+            # template's own volume instead - it is SKU-correct.
+            if not printer_config.get('variables'):
+                logger.warning(
+                    f"PRINTER_VARIABLES unavailable for {printer_name} - "
+                    "keeping template volume in the OctoPrint profile")
+                printer_config = dict(printer_config)
+                printer_config['bed_width'] = float(profile_data['volume']['width'])
+                printer_config['bed_depth'] = float(profile_data['volume']['depth'])
+                printer_config['bed_height'] = float(profile_data['volume']['height'])
+
             # Update profile with dynamic configuration
             profile_data['name'] = printer_config['name']
             # Hybrid: since the config-swap model, Klipper genuinely has one
@@ -920,7 +1000,7 @@ class PrinterConfigManager:
             
             # Write updated profile
             with open(dest_profile, 'w') as f:
-                yaml.safe_dump(profile_data, f, default_flow_style=False)
+                _yaml_safe_dump(profile_data, f, default_flow_style=False)
                 
             logger.info(f"Updated OctoPrint printer profile for: {printer_name}")
             return True
@@ -1001,7 +1081,6 @@ class PrinterConfigManager:
                     cooldown_lines += [
                         'M140 S0  ; Cool down bed',
                         'M84  ; Disable motors',
-                        'M514 S0  ; Close door/chamber',
                     ]
                     after_print_cooldown = '\n'.join(cooldown_lines)
 
@@ -1011,8 +1090,11 @@ class PrinterConfigManager:
                     if mode == 'pellet':
                         before_lines.append(
                             'PELLET_PREPRINT_CHECK  ; Refill hopper if empty')
-                    before_lines.append('M514 S1  ; Open door/chamber on print start')
                     before_print_started = '\n'.join(before_lines)
+                    # No M514 door macros on the hybrid - the firmware has
+                    # none, so the old scripts spammed "Unknown command".
+                    resume_script = 'RESUME'
+                    pause_script = 'PAUSE'
                     logger.info(f"Generated OctoPrint gcode scripts for '{mode}' mode")
                 else:
                     if is_dual:
@@ -1020,11 +1102,13 @@ class PrinterConfigManager:
                     else:
                         after_print_cooldown = 'G28  ; Home all axes\nM107  ; Turn off part cooling fan\nM104 T0 S0  ; Cool down tool0 nozzle\nM140 S0  ; Cool down bed\nM84  ; Disable motors\nM514 S0  ; Close door/chamber'
                     before_print_started = 'M514 S1  ; Open door/chamber on print start'
+                    resume_script = 'RESUME\nM514 S1  ; Resume print and open door/chamber'
+                    pause_script = 'PAUSE\nM514 S0  ; Pause print and close door/chamber'
 
                 default_scripts = {
                     'beforePrintStarted': before_print_started,
-                    'beforePrintResumed': 'RESUME\nM514 S1  ; Resume print and open door/chamber',
-                    'afterPrintPaused': 'PAUSE\nM514 S0  ; Pause print and close door/chamber',
+                    'beforePrintResumed': resume_script,
+                    'afterPrintPaused': pause_script,
                     'afterPrintDone': after_print_cooldown,
                     'afterPrintCancelled': after_print_cooldown
                 }
@@ -1098,7 +1182,9 @@ class PrinterConfigManager:
             in_probe = False
             has_z_offset = False
             for line in tail.split('\n'):
-                stripped = line.replace('#*#', '', 1).strip()
+                stripped = line.strip()
+                while stripped.startswith('#*#'):
+                    stripped = stripped[3:].strip()
                 if stripped.startswith('['):
                     in_probe = (stripped == '[probe]')
                 elif in_probe and stripped.startswith('z_offset'):
