@@ -603,10 +603,26 @@ class PrinterConfigManager:
         concatenates into ``#*##*# [probe]``, which Klipper's save-config
         parser cannot apply, the seeded probe offset is lost, and Klipper
         halts on "Option 'z_offset' in section 'probe' must be specified".
+
+        EVERY line of the body must carry the ``#*#`` prefix. Klipper's
+        _find_autosave_data discards the WHOLE block the moment one line
+        does not - it cannot tell a stray blank line from an operator
+        editing the autosave region - and that takes [probe] z_offset with
+        it, halting Klipper with the same message. A stored fragment
+        written by an older build ends with a newline, and joining those
+        with '\\n' put exactly such a bare blank line between the per-mode
+        and shared halves (seen on .176: filament -> pellet left the
+        machine unable to start). So filter blank lines out here rather
+        than trusting the two inputs to be clean.
         """
-        body = '\n'.join(part for part in (per_mode_text, shared_text) if part.strip())
-        if not body.strip():
+        lines: List[str] = []
+        for part in (per_mode_text, shared_text):
+            if not part.strip():
+                continue
+            lines.extend(line for line in part.split('\n') if line.strip())
+        if not lines:
             return ''
+        body = '\n'.join(lines)
         return self.SAVE_CONFIG_HEADER + '\n' + body + '\n'
 
     def store_mode_calibration(self, mode: str) -> bool:
