@@ -188,7 +188,23 @@ class filamentManagementScreen(QWidget):
         if not is_hybrid_printer():
             return
         try:
-            header_layout = self.findChild(QHBoxLayout, "horizontalLayout_4")
+            # SCOPE THE SEARCH TO THE HEADER FRAME.
+            #
+            # self.findChild() walks the WHOLE subtree, and by the time this
+            # runs the sub-screens are already parented to this widget - the
+            # nozzle change wizard among them, whose .ui also has a layout
+            # called horizontalLayout_4. findChild returned the WIZARD's
+            # layout, so the selector was inserted into that wizard's
+            # step2Page and never appeared on the material screen. It logged
+            # "added" all the same, which is why this looked built but
+            # missing (diagnostic on .176: parent=step2Page).
+            #
+            # Object names are only unique WITHIN a .ui file, so any
+            # findChild by name on this screen must be anchored to a
+            # container that belongs to this screen.
+            header = self.findChild(QWidget, "infoBackFrame")
+            header_layout = (header.findChild(QHBoxLayout, "horizontalLayout_4")
+                             if header is not None else None)
             if header_layout is None:
                 self.logger.error("Header layout not found - extruder type selector not added")
                 return
@@ -464,6 +480,19 @@ class filamentManagementScreen(QWidget):
         try:
             self.material_nozzle_stacked_widget.setCurrentWidget(self.main_material_nozzle_page)
             self.logger.debug("Reset stacked widget to main_material_nozzle_page on show")
+            # The selector must be on the header of THIS screen. It once
+            # landed on the nozzle wizard's step2Page via a findChild name
+            # collision and was invisible here while still logging as
+            # added, so say so plainly rather than failing silently again.
+            c = self.extruderTypeComboBox
+            if c is not None:
+                parent = c.parentWidget()
+                parent_name = parent.objectName() if parent is not None else None
+                if parent_name != "infoBackFrame":
+                    self.logger.error(
+                        "Extruder type selector is parented to '%s', not the header "
+                        "(infoBackFrame) - it will not be visible on this screen"
+                        % parent_name)
             # Poll pellet sensors when screen is shown
             self._poll_pellet_sensors()
             # Re-query the extruder mode so the selector reflects
