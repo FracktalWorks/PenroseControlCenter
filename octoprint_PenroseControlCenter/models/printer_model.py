@@ -105,7 +105,9 @@ class PrinterModel(QObject):
         # Nozzle sizes differ per extruder head type. Use nozzle_options_for_tool()
         # so a Hybrid IDEX offers filament sizes on T1 and pellet sizes on T0.
         self._pellet_nozzle_options = ["0.6", "0.8", "1.0", "1.5", "2.0", "3.0"]
-        self._filament_nozzle_options = ["0.25", "0.4", "0.6", "0.8", "1.0"]
+        # The filament head ships with the large-format range only - the fine
+        # 0.25/0.4 tips are not offered on this machine.
+        self._filament_nozzle_options = ["0.6", "0.8", "1.0", "1.2"]
         # Nested per-bay structure per tool; defaults reflect current A/B mapping
         self.tools = {
             "tool0": {
