@@ -241,7 +241,13 @@ class ControlScreen(QWidget):
 
         # Reflect persistent pellet sensor preferences in toggle buttons
         try:
-            t0_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
+            # The single toggle follows the mode on a Hybrid - see
+            # togglePelletSensorT0. Reading the pellet preference in filament
+            # mode showed the wrong state on the runout switch.
+            if is_hybrid_printer() and get_extruder_mode() == 'filament':
+                t0_sensor_enabled = bool(self.main_window.printer_model.extruder_runout_enabled)
+            else:
+                t0_sensor_enabled = bool(self.main_window.printer_model.pellet_sensor_t0_enabled)
             self.togglePelletSensorT0Button.setChecked(t0_sensor_enabled)
             if is_hybrid_printer():
                 # T1 is a filament extruder - its toggle drives the runout switch
@@ -748,12 +754,29 @@ class ControlScreen(QWidget):
             dialog.WarningOk(self, f"Error updating ControlScreen UI for status {status}: {e}", overlay=True)
 
     def togglePelletSensorT0(self):
-        """Toggle T0 (Left) pellet level sensor persistent preference and apply live state."""
+        """Toggle the active head's sensor and apply it live.
+
+        On a Hybrid this is the ONLY sensor toggle on the screen (the T1
+        one is hidden with the rest of the single-nozzle furniture), so
+        what it means follows the mode - matching the label that
+        configure_sensor_toggles_for_hybrid puts on it:
+
+            pellet mode   -> hopper level sensor  (pellet_sensor_t0_enabled)
+            filament mode -> runout switch        (extruder_runout_enabled)
+
+        It used to write the pellet preference in both modes while
+        apply_extruder_sensors read the runout one in filament mode, so in
+        filament mode the toggle moved, saved nothing that was read, and
+        the sensor never changed state.
+        """
         logger.info("ControlScreen.togglePelletSensorT0 started")
         try:
             enabled = self.togglePelletSensorT0Button.isChecked()
             # Update model preference (persists)
-            self.main_window.printer_model.set_pellet_sensor_t0_pref(enabled, persist=True)
+            if is_hybrid_printer() and get_extruder_mode() == 'filament':
+                self.main_window.printer_model.set_extruder_runout_pref(enabled, persist=True)
+            else:
+                self.main_window.printer_model.set_pellet_sensor_t0_pref(enabled, persist=True)
             # Apply immediate state to Klipper
             self.main_window.controller.apply_extruder_sensors()
         except Exception as e:

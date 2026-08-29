@@ -107,6 +107,19 @@ Failure modes that follow from this, and which `hybrid_check.py` tests:
 - **printer.cfg rewritten hundreds of times** → `M290` saving on every
   0.025 mm press (318 recorded on `.176`). v4+ debounces it into
   `[delayed_gcode _SAVE_Z_OFFSET]`, 5 s after the last press.
+- **"Unknown sensor" on the Material screen or at print start** → a sensor
+  from the OTHER mode was addressed. Only the active head's exists:
+  `pellet_sensor_left` (pellet, from `PELLET_RELAY_CONTROL_HYBRID.cfg`) and
+  `switch_sensor_E1` (filament, from `MODE_FILAMENT.cfg`). Every
+  `SET_FILAMENT_SENSOR` caller must go through
+  `MainController.apply_extruder_sensors`, which keys off the mode. The
+  change-filament wizard used to drive `switch_sensor_E1` on an
+  `is_hybrid_printer()` check alone, and the material bay is shown in both
+  modes - so opening it in pellet mode errored.
+- **The Control screen sensor toggle does nothing in filament mode** → it
+  wrote `pellet_sensor_t0_enabled` while the apply path read
+  `extruder_runout_enabled`. There is one toggle and its meaning follows the
+  mode; both sides must agree.
 - **Per-mode calibration vanishes on the second switch** → `printer.cfg`
   contains a welded `#*##*#` seam and duplicate `[probe]` sections, from a
   compose bug in older plugin builds. Update the plugin and switch once; the

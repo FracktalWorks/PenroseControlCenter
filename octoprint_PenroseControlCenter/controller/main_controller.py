@@ -634,6 +634,13 @@ class MainController(QtCore.QObject):
         """
         if not self.octoprint_client:
             return
+        # pellet_sensor_left lives in PELLET_RELAY_CONTROL_HYBRID.cfg, which
+        # only MODE_PELLET.cfg includes - in filament mode Klipper has never
+        # heard of it. Prefer apply_extruder_sensors(); this guard is here so
+        # a direct caller cannot produce an "Unknown sensor" error.
+        if is_hybrid_printer() and get_extruder_mode() != 'pellet':
+            self.logger.debug("Skipped pellet sensor state - filament head is configured")
+            return
         try:
             t0_enabled = getattr(self.printer_model, 'pellet_sensor_t0_enabled', True)
             t0_state = 1 if t0_enabled else 0
@@ -651,10 +658,19 @@ class MainController(QtCore.QObject):
     def apply_filament_sensor_state(self):
         """Enable/disable the T1 filament runout sensor per preference (Hybrid IDEX only).
 
-        Sensor name comes from BASE_PENROSE_HYBRID.cfg: switch_sensor_E1.
+        Sensor name comes from MODE_FILAMENT.cfg: switch_sensor_E1. It does
+        not exist in pellet mode, so every caller must be behind a mode
+        check - use apply_extruder_sensors() unless you have already
+        established that the filament head is the configured one.
         There is no flow/motion sensor on this machine.
         """
         if not self.octoprint_client:
+            return
+        # switch_sensor_E1 lives in MODE_FILAMENT.cfg - it does not exist
+        # when the pellet head is configured. Same reasoning as
+        # apply_pellet_sensor_state.
+        if not is_hybrid_printer() or get_extruder_mode() != 'filament':
+            self.logger.debug("Skipped filament sensor state - filament head is not configured")
             return
         try:
             runout_state = 1 if getattr(self.printer_model, 'extruder_runout_enabled', True) else 0
@@ -737,6 +753,13 @@ class MainController(QtCore.QObject):
             apply_extruder_mode_to_all_screens(self.main_window)
         except Exception as e:
             self.logger.error(f"Error applying extruder mode to screens: {e}")
+        # Arm the sensor the NEW head actually has. Only one of the two
+        # exists in Klipper at a time, and this signal is the first point at
+        # which the cached mode matches what Klipper just loaded - so it is
+        # also the first point at which it is safe to address a sensor by
+        # name. Without this the incoming head's sensor keeps whatever state
+        # the config left it in rather than the operator's preference.
+        self.apply_extruder_sensors()
         # Keep the OctoPrint web interface in step with the touchscreen
         self.apply_extruder_mode_to_octoprint(mode)
 

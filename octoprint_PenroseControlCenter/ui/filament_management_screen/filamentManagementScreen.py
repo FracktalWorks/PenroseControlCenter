@@ -173,12 +173,17 @@ class filamentManagementScreen(QWidget):
     def _setup_extruder_type_selector(self):
         """Add the always-visible extruder type selector to the header.
 
-        Hybrid IDEX only. The machine presents as a single-extruder
-        printer - this dropdown is how the customer switches it between
-        "single pellet printer" and "single filament printer". Switching
-        is a runtime action (SET_EXTRUDER_MODE): no firmware copy, no
-        Klipper restart, no reboot - the firmware cools the deactivated
-        head, swaps carriages and the UI re-skins live.
+        Hybrid only. The machine presents as a single-extruder printer -
+        this dropdown is how the customer switches it between "single
+        pellet printer" and "single filament printer".
+
+        Switching is a CONFIG SWAP, not a runtime toggle: it rewrites the
+        MODE_*.cfg include in printer.cfg, files the outgoing head's
+        calibration away, restores the incoming head's, and restarts
+        Klipper. The touchscreen stays up throughout - only the motion
+        controller restarts. SET_EXTRUDER_MODE, the old runtime command,
+        is deprecated and errors if called. See
+        _perform_extruder_mode_switch for the ordering and why it matters.
         """
         if not is_hybrid_printer():
             return
@@ -341,6 +346,13 @@ class filamentManagementScreen(QWidget):
 
             # 1. Safe state. Blocking-ish: the gcode queue drains through
             #    M400 inside the macro, and we give it a generous window.
+            #
+            # Disarm the OUTGOING head's sensor first, while it still exists
+            # in Klipper. After the swap it is gone, and a filament runout
+            # left armed can fire PAUSE during the homing the macro does.
+            controller = getattr(self.main_window, 'controller', None)
+            if controller is not None:
+                controller.disable_extruder_sensors()
             self.octoprint_client.gcode(command='PREPARE_EXTRUDER_MODE_SWITCH')
             self._wait_ms(45000, "homing and parking")
 
@@ -375,7 +387,6 @@ class filamentManagementScreen(QWidget):
                 restore_octoprint_configs(current_printer)
 
             # 4. Restart Klipper into the new configuration
-            controller = getattr(self.main_window, 'controller', None)
             if controller is not None:
                 # Suppress the transient MCU-reset errors a restart emits
                 controller._klipper_restart_in_progress = True

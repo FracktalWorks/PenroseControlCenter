@@ -391,9 +391,11 @@ def configure_sensor_toggles_for_hybrid(widget):
         pellet mode   -> the hopper level sensor (pellet_sensor_left)
         filament mode -> the filament runout switch (switch_sensor_E1)
 
-    Only the label changes here; the routing lives in
-    ControlScreen.togglePelletSensorT0 and
+    The routing lives in ControlScreen.togglePelletSensorT0 and
     MainController.apply_extruder_sensors, both of which key off the mode.
+    This sets the label AND the checked state to match - the two
+    preferences are separate, so after a switch the button would otherwise
+    keep showing the other head's setting under the new head's label.
 
     Args:
         widget: The control screen widget
@@ -414,6 +416,18 @@ def configure_sensor_toggles_for_hybrid(widget):
         logger.debug(f"Sensor toggle relabelled for {mode} mode -> '{label_text}'")
     except Exception as e:
         logger.error(f"Error relabelling sensor toggle: {e}")
+
+    button = getattr(widget, 'togglePelletSensorT0Button', None)
+    model = getattr(getattr(widget, 'main_window', None), 'printer_model', None)
+    if button is None or model is None:
+        return
+    try:
+        enabled = (model.extruder_runout_enabled if mode == 'filament'
+                   else model.pellet_sensor_t0_enabled)
+        button.setChecked(bool(enabled))
+        logger.debug(f"Sensor toggle state set from the {mode} preference: {enabled}")
+    except Exception as e:
+        logger.error(f"Error setting sensor toggle state: {e}")
 
 
 def configure_material_bay_for_hybrid(widget):

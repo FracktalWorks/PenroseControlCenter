@@ -49,7 +49,7 @@ from PyQt5 import uic, QtCore
 from PyQt5.QtWidgets import QWidget, QPushButton, QStackedWidget, QComboBox, QProgressBar, QLabel
 from utils.helpers import check_ui_elements, run_async
 from utils.logger import get_logger
-from utils.printer_ui_config import is_dual_nozzle_printer, force_single_tool, is_hybrid_printer
+from utils.printer_ui_config import is_dual_nozzle_printer, force_single_tool, is_hybrid_printer, get_extruder_mode
 from utils import dialog
 
 # UI/logic constants
@@ -574,7 +574,17 @@ class ChangeFilamentWizard(QWidget):
         A hand-driven unload looks exactly like a runout to the sensor, which
         would pause the machine mid-wizard.
         """
-        if not is_hybrid_printer():
+        # HYBRID IS NOT ENOUGH - the MODE has to be filament too.
+        #
+        # switch_sensor_E1 is declared in MODE_FILAMENT.cfg, so it does not
+        # exist at all when the pellet head is configured. The material bay
+        # is shown in BOTH modes (configure_material_bay_for_hybrid only
+        # relabels it), so this wizard opens in pellet mode as well - and
+        # sending SET_FILAMENT_SENSOR for a sensor Klipper has never heard
+        # of is an error, on a screen the operator opened to load material.
+        # The pellet head has no runout switch to suspend; its hopper level
+        # sensor is not part of this wizard.
+        if not is_hybrid_printer() or get_extruder_mode() != 'filament':
             return
         try:
             self.octoprint_client.gcode(command='SET_FILAMENT_SENSOR SENSOR=switch_sensor_E1 ENABLE=0')
@@ -584,7 +594,9 @@ class ChangeFilamentWizard(QWidget):
 
     def _restore_filament_sensors(self):
         """Re-apply the user's filament sensor preferences after the wizard exits."""
-        if not is_hybrid_printer():
+        # Same mode gate as _suspend_filament_sensors - there is nothing to
+        # restore on the pellet head, and asking would error.
+        if not is_hybrid_printer() or get_extruder_mode() != 'filament':
             return
         try:
             self.main_window.controller.apply_filament_sensor_state()
