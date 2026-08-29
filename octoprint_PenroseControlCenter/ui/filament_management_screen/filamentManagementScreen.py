@@ -623,8 +623,21 @@ class filamentManagementScreen(QWidget):
         Sends G-code commands to Klipper to query the pellet sensor states.
         The responses are parsed by the websocket client and update the
         pellet_sensor_state_map in printer_model.
+
+        Does nothing in filament mode on a Hybrid. pellet_sensor_left comes
+        from PELLET_RELAY_CONTROL_HYBRID.cfg, which only MODE_PELLET.cfg
+        includes - so in filament mode the sensor is not in Klipper at all
+        and querying it fails with "The value 'pellet_sensor_left' is not
+        valid for SENSOR". showEvent calls this on every open of the
+        Material/Nozzle screen, and that screen is shown in BOTH modes, so
+        the error greeted the operator each time. Same rule as
+        MainController.apply_extruder_sensors: address only the active
+        head's sensor.
         """
         try:
+            if is_hybrid_printer() and get_extruder_mode() == 'filament':
+                self.logger.debug("Filament mode - no pellet hopper sensor to poll")
+                return
             # Send query commands to Klipper - responses are parsed by websocket_client.
             # pellet_sensor_right only exists on dual *pellet* printers: single nozzle
             # machines have no right hopper, and the Hybrid IDEX has a filament head there.
