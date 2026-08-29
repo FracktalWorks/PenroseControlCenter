@@ -26,8 +26,22 @@ def is_hybrid_printer():
 def tool_head_type(tool):
     """Return the extruder head type fitted to a tool: 'pellet' or 'filament'.
 
-    On the Hybrid IDEX only the right carriage (tool1) carries a filament
-    extruder; every other machine in the Penrose range is pellet on both sides.
+    On a Hybrid the answer is the ACTIVE MODE, not the tool index. Under
+    the old IDEX config both heads existed at once and tool1 was the
+    filament one, but the config-swap model gives Klipper a SINGLE
+    extruder - whichever MODE_*.cfg is included - and it is always
+    presented as tool0. tool1's rows are hidden outright
+    (variable_is_dual_nozzle: 0), so the only bay the operator can touch
+    is tool0.
+
+    Keying off the index therefore reported 'pellet' for the one visible
+    bay in BOTH modes, and everything downstream followed it:
+
+      - the Material screen opened the pellet line-vac load dialog in
+        filament mode instead of the filament change wizard
+      - the nozzle list offered pellet sizes (up to 3.0mm) on the TD-01
+
+    Non-hybrid machines are pellet on every tool, exactly as before.
 
     Args:
         tool: Tool identifier - "tool0"/"tool1", or 0/1
@@ -35,9 +49,8 @@ def tool_head_type(tool):
     Returns:
         str: 'filament' or 'pellet'
     """
-    tool_name = tool if isinstance(tool, str) else f"tool{int(tool)}"
-    if is_hybrid_printer() and tool_name == "tool1":
-        return 'filament'
+    if is_hybrid_printer():
+        return get_extruder_mode()
     return 'pellet'
 
 def is_filament_tool(tool):
