@@ -263,8 +263,19 @@ def check_z_zero(client, f: Findings, mode: str | None, vals: dict, var: str) ->
 
     # Double correction: per-mode z_offset AND a head Z offset on top.
     base = ssh_read_file(client, "/home/pi/BASE_PENROSE_HYBRID.cfg") or ""
-    applies_tool_z = bool(re.search(r"_APPLY_HEAD_OFFSET.*?tool_offset_z", base, re.S | re.I)) \
-        and "tool_offset_z" in base.split("_APPLY_HEAD_OFFSET")[-1][:1200]
+    # Look inside the macro DEFINITION, not at whatever follows the last
+    # mention of the name. _APPLY_HEAD_OFFSET is also *called* from
+    # homing_override and elsewhere, so splitting on the last occurrence
+    # lands past the end of the file and finds nothing - which reported
+    # "stored but not applied" on a machine that was applying it (.176,
+    # BASE v6, filament Z corrected twice by 0.4mm).
+    body = ""
+    m = re.search(r"^\[gcode_macro _APPLY_HEAD_OFFSET\]\s*$", base, re.M)
+    if m:
+        rest = base[m.end():]
+        nxt = re.search(r"^\[", rest, re.M)
+        body = rest[:nxt.start()] if nxt else rest
+    applies_tool_z = bool(re.search(r"SET_GCODE_OFFSET[^\n]*tool_offset_z", body))
     if abs(tool_z) > 1e-9:
         f.add("z-zero", not applies_tool_z, "no double Z correction",
               f"tool_offset_z = {tool_z}" + (" AND still applied" if applies_tool_z else " stored but not applied"),
