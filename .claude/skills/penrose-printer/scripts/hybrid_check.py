@@ -285,7 +285,13 @@ def check_z_zero(client, f: Findings, mode: str | None, vals: dict, var: str) ->
 
     # The touchscreen Z +/- buttons send M290.
     core = ssh_read_file(client, "/home/pi/CORE_GCODE_MACROS.cfg") or ""
-    m290 = core.split("[gcode_macro M290]")[-1][:2500]
+    # Bound the macro by the next section header, not a fixed slice. A
+    # 2500-char window silently truncated M290 once it grew (the debounce
+    # line sits 3294 chars in on v5) and reported the debounce as MISSING
+    # on a machine that had it.
+    _m290_rest = core.split("[gcode_macro M290]")[-1]
+    _m290_next = re.search(r"^\[", _m290_rest, re.M)
+    m290 = _m290_rest[:_m290_next.start()] if _m290_next else _m290_rest
     debounced = "UPDATE_DELAYED_GCODE ID=_SAVE_Z_OFFSET" in m290
     pellet_only = "is_pellet" in m290
     f.add("z-zero", debounced, "M290 debounces its SAVE_CONFIG",
